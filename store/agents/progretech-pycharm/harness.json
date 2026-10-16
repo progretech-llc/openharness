@@ -1,0 +1,27 @@
+{
+  "spec": 1,
+  "id": "progretech-llc/pycharm",
+  "name": "PyCharm",
+  "category": "Coding",
+  "author": "Edwin Rodriguez (ProgreTech; AI-assisted)",
+  "description": "Work in a PyCharm project and open the IDE from Harness when needed.",
+  "engine": "codex",
+  "workspace": {
+    "template": "template",
+    "marker": "README.md",
+    "init": "toolchain/init-workspace.sh"
+  },
+  "agent": {
+    "instructions": "AGENTS.md",
+    "skills": ["skills"],
+    "env": {
+      "PYCHARM_DSH": "${dsh}",
+      "PYCHARM_WORKSPACE": "${workspace}"
+    }
+  },
+  "toolchain": {
+    "setup": "toolchain/setup.sh",
+    "doctor": "toolchain/doctor.sh"
+  },
+  "verdict": ".harness/verdict.json"
+}
