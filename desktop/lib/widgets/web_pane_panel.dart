@@ -5,8 +5,8 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
+import 'package:webview_all/webview_all.dart';
+import 'package:webview_all_wkwebview/webview_all_wkwebview.dart';
 
 import '../core/open_in_browser.dart';
 import '../core/runtime_platform.dart';
@@ -36,9 +36,9 @@ import 'verdict_marks.dart';
 /// that follows [TerminalPane.url] when the daemon names a new one, and a
 /// small notice while the viewer is not answering yet.
 ///
-/// The webview is a native view (WKWebView through `webview_flutter`), and a
+/// The webview is a native view (WKWebView on macOS, WebKitGTK on Linux), and a
 /// native view cannot exist where no platform implementation is registered:
-/// under `flutter test`, and on Linux today. There the body is the URL in
+/// under ordinary `flutter test`, and on unsupported platforms. There the body is the URL in
 /// words, so every layout around it still builds and the tests can prove the
 /// tile is placed, sized and closed correctly without instantiating it.
 class WebPanePanel extends StatefulWidget {
@@ -86,7 +86,8 @@ class WebPanePanel extends StatefulWidget {
   /// Whether this build can put a real webview on screen. One place, so the
   /// panel and its tests agree on when the placeholder is the right answer.
   static bool get webviewAvailable =>
-      webviewAvailableForTest ?? (!kUnderTest && RuntimePlatform.isMacOS);
+      webviewAvailableForTest ??
+      (!kUnderTest && (RuntimePlatform.isMacOS || RuntimePlatform.isLinux));
 
   /// A test that installs a fake `WebViewPlatform` mounts the real webview path.
   @visibleForTesting
@@ -361,7 +362,15 @@ class _WebPanePanelState extends State<WebPanePanel> {
         children: [
           _header(context),
           Divider(height: 1, color: AppColors.border),
-          Expanded(child: _body(context)),
+          Expanded(
+            // GTK overlays sit above Flutter dialogs. Keep the page mounted,
+            // but unpainted while a modal route covers the workspace.
+            child: Offstage(
+              offstage: RuntimePlatform.isLinux &&
+                  (!widget.visible || ModalRoute.isCurrentOf(context) == false),
+              child: _body(context),
+            ),
+          ),
         ],
       ),
     );
@@ -468,7 +477,7 @@ class _WebPanePanelState extends State<WebPanePanel> {
     final controller = _controller;
     final url = widget.pane.url;
     if (controller == null) {
-      // No embedded webview on this platform (it ships for macOS only — see
+      // No embedded webview on this platform (it ships for macOS and Linux — see
       // [webviewAvailable]), so the page it would have shown opens in the
       // browser instead of sitting here as text (openharness#108).
       final page = url == null ? null : Uri.tryParse(url);
