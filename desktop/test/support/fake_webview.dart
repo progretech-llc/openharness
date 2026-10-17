@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
-import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
+import 'package:webview_platform_interface/webview_platform_interface.dart';
 
 /// A webview platform with no native view: records what the app asks of each controller and lets a
 /// test play the navigation callbacks WKWebView would make.
