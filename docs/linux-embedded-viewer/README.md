@@ -28,3 +28,9 @@ Run `FLUTTER_TEST=1 dbus-run-session -- xvfb-run -a flutter test -d linux --no-p
 ## 1.2.90 local update (October 18, 2026)
 
 Reapplied the viewer patch to upstream `v1.2.90_desktop` without conflicts. The Linux release build, 98 selected viewer, Store dialog, model catalog, privacy, settings and resource tests, and the native Linux viewer integration test passed. Installed locally as `1.2.90+progretech.viewer.1`. The extracted local bundle still requires manual updates so the viewer patch is retained.
+
+## Radeon local-model launch (October 18, 2026)
+
+The local CLI patch honours `CUDA_VISIBLE_DEVICES=-1` when Grid's hardware probe still reports CUDA. Listings and launch checks use currently free host RAM rather than the unrelated NVIDIA card's VRAM. Other CUDA configurations retain their existing checks. Harness's Ollama child inherits `OLLAMA_VULKAN=1`, `GGML_VK_VISIBLE_DEVICES=1`, `OLLAMA_IGPU_ENABLE=1` and the PT-Storage `OLLAMA_MODELS` path from the local harnessd service override. These device settings are specific to this workstation; recheck Vulkan device ordering if hardware changes.
+
+Validation: TypeScript checks and all 262 local-model tests passed, including a mixed GPU launch regression and the isolated integration suite; the local-model coverage gate passed at 100%. Installed CLI version: `0.4.19+progretech.radeon.1`, with CLI self-update disabled to retain the patch. The desktop viewer build is unchanged.

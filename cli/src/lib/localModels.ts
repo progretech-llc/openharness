@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { readFile, readdir, stat, mkdir, rename, writeFile, statfs, symlink, lstat, readlink } from 'node:fs/promises'
 import { createServer, type AddressInfo } from 'node:net'
 import { basename, dirname, join } from 'node:path'
+import { freemem } from 'node:os'
 import { GridFleetRpc, type GridFleetResult } from './gridFleetRpc.js'
 import { gridCredentialsPath } from './gridCredentials.js'
 import { binaryOnPath } from './binaryOnPath.js'
@@ -258,6 +259,13 @@ export function modelBudget(device: Record<string, any>): number | undefined {
   return Math.min(usable, Math.floor(total * GiB * MODEL_MEMORY_SHARE))
 }
 
+/** Grid's hardware probe can still report NVIDIA when CUDA is explicitly disabled. The engines
+ * inherit that setting, so their budget is host memory, not the unrelated card's free VRAM. */
+export function visibleModelDevice(device: Record<string, any>, env: NodeJS.ProcessEnv, availableBytes = freemem()): Record<string, any> {
+  if (device.backend !== 'cuda' || env.CUDA_VISIBLE_DEVICES?.trim() !== '-1') return device
+  return { ...device, backend: 'cpu', gpus: [], usable_bytes: availableBytes }
+}
+
 /** What the catalog fits to on [device] and what memory that is ([LocalModelsSnapshot.fitBytes]). */
 export function fitOf(device: Record<string, any>): Pick<LocalModelsSnapshot, 'fitBytes' | 'fitMemory' | 'gpuMemoryBytes'> {
   const fit = modelBudget(device)
@@ -400,7 +408,10 @@ export class LocalModels {
   private async json(args: string[]): Promise<any> {
     const result = await this.run(args)
     if (!result.ok) throw new Error('Models could not be checked. Try again.')
-    try { return JSON.parse(result.stdout) } catch { throw new Error('Models could not be checked. Try again.') }
+    try {
+      const value = JSON.parse(result.stdout)
+      return args[0] === 'device-info' ? visibleModelDevice(obj(value), this.processEnv) : value
+    } catch { throw new Error('Models could not be checked. Try again.') }
   }
 
   /** The same authenticated catalog Grid uses, paged until every compatible row

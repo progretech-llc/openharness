@@ -6,10 +6,12 @@ import { createHash } from 'node:crypto'
 import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import type { GpuProcess } from './gpuProcesses.js'
-import { baseModel, compatibleModels, contextLadder, fitOf, LocalModels, modelBudget, modelFamily, rankForCoding, readRunRecords, type GridInventory } from './localModels.js'
+import { visibleModelDevice, baseModel, compatibleModels, contextLadder, fitOf, LocalModels, modelBudget, modelFamily, rankForCoding, readRunRecords, type GridInventory } from './localModels.js'
 import { GridFleetRpc, type GridFleetResult } from './gridFleetRpc.js'
-import { AppStartError, type AppEngineOps, type AppEngineRecord, type AppModel } from './appModels.js'
+import { appContext, AppStartError, type AppEngineOps, type AppEngineRecord, type AppModel } from './appModels.js'
 import { encryptDownFrame, encryptRpcResult } from './e2ee/applicationFrames.js'
+
+vi.mock('node:os', async (original) => ({ ...await original<typeof import('node:os')>(), freemem: () => 72 * 1024 ** 3 }))
 
 // The coverage audit needs real filesystem work with explicit disk/read faults at the I/O boundary.
 vi.mock('node:fs/promises', async (original) => {
@@ -1773,6 +1775,20 @@ describe('models other apps downloaded, started in their own app', () => {
     }
   })
 
+  it('starts an Ollama model against host memory when CUDA is disabled on a mixed GPU machine', async () => {
+    const base = run.getMockImplementation()!
+    run.mockImplementation((args, output) => args[0] === 'device-info'
+      ? Promise.resolve(ok({ backend: 'cuda', usable_bytes: 3.4 * GiB, memory: { total_gb: 128 }, gpus: [{ memory_total_mb: 16384 }] }))
+      : base(args, output))
+    apps = [{ ...ollama, sizeBytes: 17 * GiB }]
+    const models = appService({ processEnv: { GRID_HOME: home, CUDA_VISIBLE_DEVICES: '-1', OLLAMA_VULKAN: '1' } })
+    await models.act('home', ollama.id, 'start'); await models.settled()
+    expect(ops.start).toHaveBeenCalled()
+    const listed = await models.list('home', true)
+    expect(listed.fitMemory).toBe('ram')
+    expect(listed.models.find(m => m.id === ollama.id)?.state).toBe('running')
+  })
+
   it('starts nothing that cannot get 64K beside its weights', async () => {
     apps = [{ ...ollama, sizeBytes: 60 * GiB }]
     const models = appService()
@@ -2172,5 +2188,21 @@ describe('the grids this computer serves a model on', () => {
     // An operation on the own grid after it: its own receipt again.
     const own = await service.act('home', 'org/Small-GGUF', 'stop'); await service.settled()
     expect((await service.list('home', true)).models[0].operation).toMatchObject({ id: own.operation!.id, action: 'stop' })
+  })
+})
+
+describe('memory with explicitly disabled CUDA', () => {
+  const GiB = 1024 ** 3
+  const device = { backend: 'cuda', usable_bytes: 3.4 * GiB, memory: { total_gb: 128 }, gpus: [{ memory_total_mb: 16384 }] }
+  it('uses host memory for the Radeon/Ollama environment, retaining CUDA budgets otherwise', () => {
+    const corrected = visibleModelDevice(device, { CUDA_VISIBLE_DEVICES: ' -1 ', OLLAMA_VULKAN: '1' }, 72 * GiB)
+    expect(corrected).toMatchObject({ backend: 'cpu', gpus: [], usable_bytes: 72 * GiB })
+    expect(fitOf(corrected)).toMatchObject({ fitMemory: 'ram' })
+    const model = { sizeBytes: 17 * GiB, contextLength: 65536 }
+    expect(appContext(model, device.usable_bytes)).toBeNull()
+    expect(appContext(model, corrected.usable_bytes)).toBe(65536)
+    expect(visibleModelDevice(device, {})).toBe(device)
+    expect(visibleModelDevice(device, { CUDA_VISIBLE_DEVICES: '0' })).toBe(device)
+    expect(visibleModelDevice(corrected, { CUDA_VISIBLE_DEVICES: '-1' })).toBe(corrected)
   })
 })
