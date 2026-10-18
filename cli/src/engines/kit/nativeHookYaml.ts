@@ -158,9 +158,10 @@ async function installIn(rule: NativeYamlHooks, cmd: string, home: string, optio
 
     const budget = new NativeEvidenceBudget()
     let tokens = 0
-    for (const _token of new Lexer().lex(config)) {
+    for (const token of new Lexer().lex(config)) {
       budget.step()
-      if (++tokens > 4096) throw new HookPreparationHeld('the YAML configuration exceeds its structure limit')
+      // Comment-heavy Hermes defaults must not consume the YAML structure allowance.
+      if (token.trim() && !token.startsWith('#') && ++tokens > 4096) throw new HookPreparationHeld('the YAML configuration exceeds its structure limit')
     }
     // Parse before examining markers: marker-like text inside a quoted scalar
     // is somebody else's configuration. Duplicate managed mappings from older

@@ -58,3 +58,23 @@ it('says what each home did in the homes\' order, whichever home finishes first'
   expect(await installNativeYamlHooks(rule, command)).toBe(true)
   expect(lines).toEqual(['[hooks] Hermes session hooks already installed', '[hooks] Hermes session hooks already installed (work)'])
 })
+
+it('installs hooks in a heavily documented config without changing its original text', async () => {
+  const original = '# A documented Hermes setting.\n'.repeat(3000) + 'model:\n  default: fixture-model\n'
+  writeFileSync(join(home, 'config.yaml'), original)
+  const rule = { ...HERMES_HOOK_SETTINGS, home }
+  const command = () => 'node /fixture/notify.mjs --port 4242 --data-dir /fixture/data --engine hermes'
+  expect(await installNativeYamlHooks(rule, command)).toBe(true)
+  expect(readFileSync(join(home, 'config.yaml'), 'utf8').startsWith(original.trimEnd())).toBe(true)
+  expect(readFileSync(join(home, 'config.yaml'), 'utf8')).toContain('on_session_start:')
+})
+
+it('still refuses excessive YAML structure and leaves the original file intact', async () => {
+  const original = Array.from({ length: 2000 }, (_, i) => `setting${i}: value`).join('\n') + '\n'
+  writeFileSync(join(home, 'config.yaml'), original)
+  const rule = { ...HERMES_HOOK_SETTINGS, home }
+  const command = () => 'node /fixture/notify.mjs --port 4242 --data-dir /fixture/data --engine hermes'
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  expect(await installNativeYamlHooks(rule, command)).toBe(false)
+  expect(readFileSync(join(home, 'config.yaml'), 'utf8')).toBe(original)
+})

@@ -51,3 +51,9 @@ Audit: the workstation and ZenBook answered owner RPCs through Harness; both adv
 Harness and primary Ollama listen on loopback; the Harness data directory and socket are mode 0700 and 0600 respectively. An untrusted browser Origin was refused with HTTP 403. Existing trust links were preserved. This does not establish remote UI rendering on an offline device or externally audit the relay's access roster.
 
 Validation: 61 focused project/engine tests passed, including external-root containment and shared-server lifecycle checks; all 262 local-model tests and their 100% coverage gate passed; TypeScript checks passed. Live project browsing listed 67 folders, repository inspection succeeded, and browsing the model-storage sibling was refused.
+
+## Hermes native hook preparation (October 18, 2026)
+
+Hermes launch stalled because the YAML hook installer counted comments and whitespace against its 4096-token structure limit. The workstation's valid 127983-byte configuration had 6909 lexer tokens, but only 1168 non-comment/non-whitespace tokens. The installer now counts only structural tokens against that allowance while retaining its work/time budget, file-size limit, strict YAML checks and ownership protections.
+
+Regression checks cover a heavily commented configuration without rewriting its original settings, and refusal of genuinely excessive structure. Hook installation and engine golden checks passed (375 cases across the targeted runs); the admission fixture required `umask 077` for its private credential-directory check. TypeScript checks passed. Installed `0.4.19+progretech.radeon.4` and verified native Hermes hooks installed successfully. Semantic hashes confirmed all non-hook settings in the default Hermes home and six role profiles were unchanged. The user's latest creation receipt was cancelled, so it was not replayed or replaced with another session.
