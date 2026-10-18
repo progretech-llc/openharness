@@ -11,8 +11,8 @@
  * rather than sharing one global allowance.
  */
 import { realpath } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { isAbsolute, relative } from 'node:path'
+import { homedir, tmpdir } from 'node:os'
+import { delimiter, isAbsolute, relative } from 'node:path'
 import { env } from '../config/env.js'
 
 /**
@@ -46,4 +46,10 @@ export async function withinRoots(target: string, roots: readonly string[]): Pro
  */
 export function tempRoots(): string[] {
   return [tmpdir(), '/tmp']
+}
+
+/** Explicit external project folders; media and credential readers keep their own narrower roots. */
+export function projectRoots(): string[] {
+  return [homedir(), ...(env.HARNESS_PROJECT_ROOTS ?? '').split(delimiter)
+    .filter(root => isAbsolute(root) && !/[\x00-\x1f\x7f]/.test(root))]
 }

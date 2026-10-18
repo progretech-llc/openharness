@@ -1,10 +1,9 @@
 import { execFile } from 'node:child_process'
 import { cp, lstat, mkdir, realpath, stat, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, normalize } from 'node:path'
 import { promisify } from 'node:util'
 import { placeholderBranch, plausibleBranchName, worktreeFolderName } from './agentNames.js'
-import { withinRoots } from './pathContainment.js'
+import { projectRoots, withinRoots } from './pathContainment.js'
 
 const exec = promisify(execFile)
 
@@ -130,7 +129,7 @@ export async function readGitProject(requested: string, options: { refresh?: boo
   // report (exit 128) — a deleted folder is not a malformed request.
   try { path = await realpath(requested) } catch { return { isGit: false, branches: [] } }
   // Same word and same roots as projectPreview's fence, so the two read alike.
-  if (!(await withinRoots(path, [homedir(), ...(options.knownRoots ?? [])]))) return { error: 'FORBIDDEN' }
+  if (!(await withinRoots(path, [...projectRoots(), ...(options.knownRoots ?? [])]))) return { error: 'FORBIDDEN' }
   // A folder with no `.git` in it or above it is not a Git project, and saying so needs no git. On a
   // Mac without the Command Line Tools, `/usr/bin/git` is Apple's installer stub: it exits 1 (not
   // git's 128), so every new harness in an existing folder failed with "Could not check Git" on a

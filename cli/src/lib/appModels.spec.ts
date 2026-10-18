@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { APP_CONTEXT, appContext, appEngineOps, cacheName, llamaServerArgs, lmsKey, scanAppModels } from './appModels.js'
 
 const GiB = 1024 ** 3
@@ -178,5 +178,41 @@ describe('llama-server for a model', () => {
     const args = llamaServerArgs({ ref: '/m/gemma-4-E2B-it-Q4_K_M.gguf', name: 'gemma-4-E2B-it-Q4_K_M' }, 131072, 41001)
     expect(args).toEqual(['-m', '/m/gemma-4-E2B-it-Q4_K_M.gguf', '--alias', 'gemma-4-E2B-it-Q4_K_M', '--ctx-size', '131072', '--parallel', '1',
       '-ngl', '999', '--host', '127.0.0.1', '--port', '41001'])
+  })
+})
+
+describe('an explicitly selected existing Ollama service', () => {
+  const model = { id: 'app:ollama:qwen3-coder:30b', name: 'qwen3-coder:30b', app: 'ollama', engine: 'ollama',
+    ref: 'qwen3-coder:30b', binary: '/not-used/ollama', sizeBytes: 17 * GiB } as const
+  it('uses the shared loopback service without overriding its options, spawning a server or unloading it on stop', async () => {
+    const request = vi.fn(async (_url: string | URL | Request, _options?: RequestInit) => new Response(JSON.stringify({ done: true })))
+    const run = vi.fn()
+    const ops = appEngineOps({ HARNESS_OLLAMA_PORT: '11434' }, request as typeof fetch, run)
+    const record = { spec: 1 as const, modelId: model.id, grid: 'fixture', name: model.name,
+      ...await ops.start(model, 131072, '/never-created') }
+    expect(record).toMatchObject({ port: 11434, sharedServer: true })
+    expect(record.pid).toBeUndefined()
+    expect(request.mock.calls[0]).toEqual(['http://127.0.0.1:11434/api/generate', expect.objectContaining({
+      body: JSON.stringify({ model: model.ref, stream: false }), redirect: 'error',
+    })])
+    await ops.stop(record)
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(run).not.toHaveBeenCalled()
+    request.mockImplementation(async () => new Response(JSON.stringify({ models: [{ name: model.ref, context_length: 65536 }] })))
+    expect(await ops.alive(record)).toBe(true)
+    expect(await ops.loadedContext(record)).toBe(65536)
+    request.mockImplementation(async () => new Response(JSON.stringify({ models: [] })))
+    expect(await ops.alive(record)).toBe(false)
+  })
+  it('fails closed when the selected shared service is unavailable or rejects the model', async () => {
+    for (const response of [new Response('{}', { status: 503 }), new Response(JSON.stringify({ error: 'fixture failure' }))]) {
+      const ops = appEngineOps({ HARNESS_OLLAMA_PORT: '11434' }, (async () => response) as typeof fetch)
+      await expect(ops.start(model, 65536, '/never-created')).rejects.toThrow('existing Ollama service')
+    }
+    const ops = appEngineOps({ HARNESS_OLLAMA_PORT: '11434' }, (async () => { throw new Error('fixture') }) as typeof fetch)
+    await expect(ops.start(model, 65536, '/never-created')).rejects.toThrow('existing Ollama service')
+    for (const port of ['', '0', '-1', '65536', '1.5', 'http://elsewhere']) {
+      await expect(appEngineOps({ HARNESS_OLLAMA_PORT: port }).start(model, 65536, '/never-created')).rejects.toThrow('local server port')
+    }
   })
 })

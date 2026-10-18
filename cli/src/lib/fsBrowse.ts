@@ -1,7 +1,7 @@
 import { readdir, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'os'
 import { isAbsolute, resolve } from 'path'
-import { withinRoots } from './pathContainment.js'
+import { projectRoots, withinRoots } from './pathContainment.js'
 
 export interface DirEntry { name: string; isDir: true }
 export interface ListDirResult { path: string; entries: DirEntry[]; truncated: boolean }
@@ -37,7 +37,7 @@ export function listDir(path: string): Promise<ListDirResult | ListDirError> {
  *  Measured on the REAL path: a link inside the home folder is named inside it while pointing
  *  anywhere, so the caller resolves before asking (lib/pathContainment.ts). */
 function isAllowed(real: string): Promise<boolean> {
-  return withinRoots(real, [homedir()])
+  return withinRoots(real, projectRoots())
 }
 
 /** One-level directory listing (folders only). Filesystem providers and macOS

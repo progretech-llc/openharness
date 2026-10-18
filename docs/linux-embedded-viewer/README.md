@@ -36,3 +36,18 @@ The local CLI patch honours `CUDA_VISIBLE_DEVICES=-1` when Grid's hardware probe
 Validation: TypeScript checks and all 262 local-model tests passed, including a mixed GPU launch regression and the isolated integration suite; the local-model coverage gate passed at 100%. Installed CLI version: `0.4.19+progretech.radeon.1`, with CLI self-update disabled to retain the patch. The desktop viewer build is unchanged.
 
 Live verification: Harness completed its Qwen3-Coder 30B start operation. Its managed Ollama server reported Radeon 8060S Vulkan, 131072 context tokens and 32149832989 bytes of model GPU memory; a direct request returned `OK`. NVIDIA compute remained assigned to ComfyUI, with no Ollama process listed. The initial Grid probe cancelled a cold load after 15 seconds; a completed warm-up allowed the existing verification to finish.
+
+## Workstation access audit and shared Ollama (October 18, 2026)
+
+Local CLI `0.4.19+progretech.radeon.3` adds two opt-in settings:
+
+- `HARNESS_PROJECT_ROOTS`: absolute external project folders separated by the platform PATH delimiter. The directory browser, repository detection and project previews include these roots alongside the home folder. Other filesystem readers keep their existing roots; sibling paths and symlink escapes remain blocked. This workstation allows only `/mnt/PT-Storage/Projects` beyond its home folder.
+- `HARNESS_OLLAMA_PORT=11434`: use the existing loopback Ollama service instead of launching an isolated server. Loading sends only the model name and non-streaming flag; it preserves the service's context, model defaults and keep-alive. No fallback server is started on failure. Shared records have no process PID; stopping them removes the Grid advertisement without unloading the model or stopping the service. Evicted models stop being reported as running.
+
+The desktop saves `PT-Storage Projects` and selects that folder for new workstation harnesses. This is a per-desktop preference; another computer can browse the same path after selecting the workstation. The Projects tab is a saved/session folder list, not an automatic disk scan. The Agents tab lists engines; a `local` filter matches none. ProgreTech's six Hermes role profiles remain available in Hermes and are not imported as engine names.
+
+Audit: the workstation and ZenBook answered owner RPCs through Harness; both advertised Qwen3-Coder from the workstation. EdAsus-ROG was offline and was not validated. The workstation exposes Codex (signed in), Claude Code (not signed in), OpenCode and Hermes. Of 55 installed Store packages, 54 passed their doctor; OrcaSlicer failed because its application is missing. All 22 current Ollama manifests referenced present model data; 11 agent-compatible Ollama models appeared in Harness. Passing doctor checks establishes dependency readiness, not every tool's behavior.
+
+Harness and primary Ollama listen on loopback; the Harness data directory and socket are mode 0700 and 0600 respectively. An untrusted browser Origin was refused with HTTP 403. Existing trust links were preserved. This does not establish remote UI rendering on an offline device or externally audit the relay's access roster.
+
+Validation: 61 focused project/engine tests passed, including external-root containment and shared-server lifecycle checks; all 262 local-model tests and their 100% coverage gate passed; TypeScript checks passed. Live project browsing listed 67 folders, repository inspection succeeded, and browsing the model-storage sibling was refused.
