@@ -37,6 +37,8 @@ export interface EngineAccountDeps {
   platform?: NodeJS.Platform
   /** Whether a macOS Keychain generic-password item with this service exists. */
   keychainHas?: (service: string) => Promise<boolean>
+  /** Native Claude status can recognize credential stores beyond the known file layout. */
+  claudeStatus?: (environment: NodeJS.ProcessEnv) => Promise<boolean | null>
   /** False: whether it is signed in only, without the session folders' scan (`lastUsedAt` null). The gateway's
    *  first-launch count asks this, once per installation (gateway/productUsage.ts). */
   lastUsed?: boolean
@@ -76,6 +78,19 @@ async function newestDay(sessions: string): Promise<number | null> {
   return mtime(dir)
 }
 
+async function nativeClaudeStatus(environment: NodeJS.ProcessEnv): Promise<boolean | null> {
+  return new Promise(resolve => {
+    execFile(environment.CLAUDE_PATH || 'claude', ['auth', 'status', '--json'],
+      { env: environment, timeout: 3000, maxBuffer: 16 * 1024 }, (error, stdout) => {
+        if (error) { resolve(null); return }
+        try {
+          const status = JSON.parse(stdout)
+          resolve(typeof status.loggedIn === 'boolean' ? status.loggedIn : null)
+        } catch { resolve(null) }
+      })
+  })
+}
+
 const CLAUDE_ENV = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX']
 
 /** Claude Code and Codex only; every other engine answers unknown. */
@@ -99,6 +114,9 @@ export async function engineAccount(engine: AgentEngine, deps: EngineAccountDeps
       const service = 'Claude Code-credentials'
         + (custom ? `-${createHash('sha256').update(custom).digest('hex').slice(0, 8)}` : '')
       if (await (deps.keychainHas ?? keychainHas)(service)) return { signedIn: true, lastUsedAt }
+    }
+    if (platform === 'linux') {
+      return { signedIn: await (deps.claudeStatus ?? nativeClaudeStatus)({ ...env, HOME: home }), lastUsedAt }
     }
     return { signedIn: false, lastUsedAt }
   }

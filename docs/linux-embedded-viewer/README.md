@@ -37,7 +37,9 @@ Validation: TypeScript checks and all 262 local-model tests passed, including a 
 
 Live verification: Harness completed its Qwen3-Coder 30B start operation. Its managed Ollama server reported Radeon 8060S Vulkan, 131072 context tokens and 32149832989 bytes of model GPU memory; a direct request returned `OK`. NVIDIA compute remained assigned to ComfyUI, with no Ollama process listed. The initial Grid probe cancelled a cold load after 15 seconds; a completed warm-up allowed the existing verification to finish.
 
-## Workstation access audit and shared Ollama (October 18, 2026)
+## Earlier workstation audit and shared-server experiment (superseded October 18, 2026)
+
+The `HARNESS_OLLAMA_PORT` experiment below is historical. The native Grid existing-endpoint route described in the current section replaces it; that custom lifecycle support has been removed.
 
 Local CLI `0.4.19+progretech.radeon.3` adds two opt-in settings:
 
@@ -57,3 +59,18 @@ Validation: 61 focused project/engine tests passed, including external-root cont
 Hermes launch stalled because the YAML hook installer counted comments and whitespace against its 4096-token structure limit. The workstation's valid 127983-byte configuration had 6909 lexer tokens, but only 1168 non-comment/non-whitespace tokens. The installer now counts only structural tokens against that allowance while retaining its work/time budget, file-size limit, strict YAML checks and ownership protections.
 
 Regression checks cover a heavily commented configuration without rewriting its original settings, and refusal of genuinely excessive structure. Hook installation and engine golden checks passed (375 cases across the targeted runs); the admission fixture required `umask 077` for its private credential-directory check. TypeScript checks passed. Installed `0.4.19+progretech.radeon.4` and verified native Hermes hooks installed successfully. Semantic hashes confirmed all non-hook settings in the default Hermes home and six role profiles were unchanged. The user's latest creation receipt was cancelled, so it was not replayed or replaced with another session.
+
+
+## Current native-first workstation setup (October 18, 2026)
+
+The owner selected Harness as the factory's main control surface, with local inference and optional explicitly selected cloud services. This supersedes the earlier shared-server patch: `appModels` again follows upstream isolated-server behavior, while the configured daily route never invokes that manager.
+
+- Native Grid `join --at http://127.0.0.1:11434/v1 -m qwen3-coder:30b --advertise-as qwen3-coder:30b --max-concurrency 1` advertises the existing workstation Ollama. No second Ollama is started. A user service invokes the installed Grid package's supplied launcher at login; no custom queue, dispatcher or cloud task claiming was added. Grid remains an online connection dependency even though inference runs locally.
+- The native Workstation Ollama Custom API connection lists the existing service's 30 model entries. OpenRouter and other explicit cloud/account choices remain available. Desktop defaults select OpenCode and the workstation Grid Qwen model, including Store harness engine preferences. Existing OpenCode's own default remains a local Ollama model.
+- `HARNESS_PROJECT_ROOTS=/mnt/PT-Storage/Projects` remains scoped to project storage. Native `~/harnesses` points to `Projects/Harness Workspaces`; existing workspace paths continue to resolve. No runtime databases or credentials are committed.
+- Duplicate Hermes gateway/web and OpenClaw gateway autostarts are disabled. Native desktop applications, Hermes profiles, unique MCP tools, memory, secrets and rendering backends are retained. Retired Hermes Dashboard/Kanban shortcuts are hidden; the native Hermes desktop shortcut remains available. OpenClaw is a standalone application, not a native Harness coding engine.
+- Linux Claude account detection now asks `claude auth status --json` when known credential-file checks cannot establish login. It preserves the selected home/config environment, bounds runtime/output, and returns unknown if native status cannot be read. This fixes a false signed-out result without reading or copying credentials.
+
+Validation: 175 focused tests and TypeScript checks passed. All 262 local-model tests and their 100% coverage gates passed. The bundled CLI is installed as `0.4.19+progretech.radeon.5`. Manual native Harness checks exercised OpenCode through workstation Grid, Hermes launch readiness, installed tools from a Harness shell, Ollama catalog access, ComfyUI queue/image retrieval and Blender geometry export. ComfyUI's diagnostic workflow checks integration, not diffusion quality. Diagnostic harness entries were removed after verification; workspaces were retained. Project HTML links/anchors were checked separately.
+
+Limits: existing linked clients were not retested, as requested. No reboot or exhaustive Store workflow qualification was performed. OrcaSlicer requires a missing native application; MLX and other platform-specific packages retain their platform limits. A launch-ready engine does not establish task quality or unattended factory delivery. The remaining fork changes address Linux viewers, device memory detection, scoped project browsing, Hermes configuration parsing and Claude account discovery.

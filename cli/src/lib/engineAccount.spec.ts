@@ -14,7 +14,7 @@ function home() {
   roots.push(root)
   return root
 }
-const linux = { env: {}, platform: 'linux' as const }
+const linux = { env: {}, platform: 'linux' as const, claudeStatus: async () => false }
 const touch = (path: string, seconds: number) => utimesSync(path, seconds, seconds)
 
 describe('engineAccount', () => {
@@ -124,6 +124,25 @@ describe('engineAccount', () => {
       expect((await engineAccount('claude', { home: root, platform: 'linux' })).signedIn).toBe(true)
     } finally {
       resetLoginShellEnvironmentCache()
+    }
+  })
+})
+
+describe('Claude native Linux credential status', () => {
+  it('asks the installed CLI when no legacy credential file exists, scoped to the selected config folder', async () => {
+    const root = home(), binary = join(root, 'claude')
+    writeFileSync(binary, `#!/bin/sh
+[ "$HOME" = "${root}" ] || exit 4
+[ "$CLAUDE_CONFIG_DIR" = "${root}/.claude" ] || exit 5
+printf '{"loggedIn":true}\\n'
+`, { mode: 0o700 })
+    expect((await engineAccount('claude', { home: root, env: { CLAUDE_PATH: binary, CLAUDE_CONFIG_DIR: join(root, '.claude') }, platform: 'linux' })).signedIn).toBe(true)
+  })
+  it('preserves a native signed-out result, and reports unknown when status is unreadable', async () => {
+    const root = home(), binary = join(root, 'claude')
+    for (const [body, expected] of [[`printf '{"loggedIn":false}\\n'`, false], ['printf malformed', null], ['exit 2', null], ["printf '{}'", null]] as const) {
+      writeFileSync(binary, '#!/bin/sh\n' + body + '\n', { mode: 0o700 })
+      expect((await engineAccount('claude', { home: root, env: { CLAUDE_PATH: binary }, platform: 'linux' })).signedIn).toBe(expected)
     }
   })
 })

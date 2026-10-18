@@ -38,8 +38,6 @@ export interface AppEngineRecord {
   port: number; binary: string; pid?: number
   /** LM Studio's server was off and this started it, so Stop turns it off again. */
   startedServer?: boolean
-  /** Existing Ollama service: Harness must never stop or unload it. */
-  sharedServer?: boolean
 }
 
 type Exec = (file: string, args: string[], options?: { env?: NodeJS.ProcessEnv; timeout?: number }) => Promise<{ ok: boolean; stdout: string; stderr: string }>
@@ -234,20 +232,6 @@ export function appEngineOps(env: NodeJS.ProcessEnv, request: typeof fetch = fet
     async start(model, ctx, logDir) {
       const binary = model.binary!
       if (model.engine === 'ollama') {
-        if (env.HARNESS_OLLAMA_PORT !== undefined) {
-          const port = Number(env.HARNESS_OLLAMA_PORT)
-          if (!Number.isInteger(port) || port < 1 || port > 65535) throw new AppStartError('HARNESS_OLLAMA_PORT must be a local server port.')
-          try {
-            // The existing service owns context, keep-alive and model options.
-            const response = await request(`http://127.0.0.1:${port}/api/generate`, {
-              method: 'POST', headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ model: model.ref, stream: false }),
-              signal: AbortSignal.timeout(10 * 60_000), redirect: 'error',
-            })
-            if (!response.ok || obj(await response.json()).error) throw new Error()
-          } catch { throw new AppStartError('The existing Ollama service could not load this model. Check the service and try again.') }
-          return { engine: 'ollama', served: model.ref, alias: model.name, port, binary, sharedServer: true }
-        }
         // Its own server beside the person's Ollama app, never on the app's 11434: the window is a server
         // setting, and theirs ran every model at 16K [run]. Same model store, so nothing is copied.
         const port = await freePort()
@@ -291,10 +275,6 @@ export function appEngineOps(env: NodeJS.ProcessEnv, request: typeof fetch = fet
     },
 
     async alive(record) {
-      if (record.engine === 'ollama' && record.sharedServer) {
-        const models = rows((await get(`http://127.0.0.1:${record.port}/api/ps`)).body.models)
-        return models.some(model => model.name === record.served || model.model === record.served)
-      }
       if (record.engine !== 'lm-studio') return ours(record)
       const loaded = rows((await get(`http://127.0.0.1:${record.port}/api/v0/models`)).body.data)
       return loaded.some(m => m.id === record.served && m.state === 'loaded')
@@ -312,7 +292,6 @@ export function appEngineOps(env: NodeJS.ProcessEnv, request: typeof fetch = fet
     },
 
     async stop(record) {
-      if (record.engine === 'ollama' && record.sharedServer) return
       if (record.engine === 'lm-studio') {
         // Every `lms` command starts LM Studio. One the person already quit has nothing loaded to unload, and
         // is not woken to be told so. Only a refused connection says that: a server slow to answer still has
