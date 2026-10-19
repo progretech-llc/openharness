@@ -74,3 +74,32 @@ The owner selected Harness as the factory's main control surface, with local inf
 Validation: 175 focused tests and TypeScript checks passed. All 262 local-model tests and their 100% coverage gates passed. The bundled CLI is installed as `0.4.19+progretech.radeon.5`. Manual native Harness checks exercised OpenCode through workstation Grid, Hermes launch readiness, installed tools from a Harness shell, Ollama catalog access, ComfyUI queue/image retrieval and Blender geometry export. ComfyUI's diagnostic workflow checks integration, not diffusion quality. Diagnostic harness entries were removed after verification; workspaces were retained. Project HTML links/anchors were checked separately.
 
 Limits: existing linked clients were not retested, as requested. No reboot or exhaustive Store workflow qualification was performed. OrcaSlicer requires a missing native application; MLX and other platform-specific packages retain their platform limits. A launch-ready engine does not establish task quality or unattended factory delivery. The remaining fork changes address Linux viewers, device memory detection, scoped project browsing, Hermes configuration parsing and Claude account discovery.
+
+
+## Patch-preserving update button (October 19, 2026)
+
+The workstation build opts into `DESKTOP_LOCAL_UPDATE_BUILDER`, an absolute path
+pointing to `desktop/scripts/build-local-update.py` in this checkout. The ordinary
+Update button still checks the official release manifest, but builds the offered
+`vX.Y.Z_desktop` source tag from `autonomous-ai/openharness` with this checkout's
+committed patches instead of installing the unpatched AppImage. This also permits
+updating the workstation's extracted directory bundle; default builds retain the
+normal AppImage update path. No custom feed, scheduled poller, or CLI update change
+is required.
+
+The helper merges in a disposable clone, runs updater/viewer/dialog tests and the
+native WebKitGTK fixture, builds the release, and embeds the same builder path.
+Merge conflicts, failed tests and failed builds leave the running app untouched.
+A detached helper copies the completed bundle beside the installation, swaps it
+only after Harness exits, and restores the previous directory if the replacement
+exits within five seconds. The `.prev` directory remains available for manual
+rollback until the next successful staging/swap. Profile/session data is outside
+the bundle. Logs: `~/.local/state/harness-local-update/build.log`.
+
+Keep this canonical checkout and its committed patches, the installed Flutter
+SDK, shared pub cache, WebKitGTK development/runtime packages, Xvfb and D-Bus.
+Updates require GitHub/pub network access and can take several minutes; the app
+continues displaying Installing while building. No official binary hash is used
+for a locally compiled artifact: its inputs are the official source tag and the
+local committed source, recorded in `local-update-source.txt` beside the binary.
+A source conflict requires maintenance rather than automatic patch rewriting.

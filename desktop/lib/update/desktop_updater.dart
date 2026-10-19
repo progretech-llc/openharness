@@ -26,6 +26,10 @@ const _metadataUrlOverride = String.fromEnvironment(
 /// (`--dart-define=DESKTOP_UPDATE_FORCE=true`), and pointless on its own: pair
 /// it with [_metadataUrlOverride] pointing at a scratch manifest, or the debug
 /// build will poll the real one and offer to replace itself with a release.
+const _localUpdateBuilder = String.fromEnvironment(
+  'DESKTOP_LOCAL_UPDATE_BUILDER',
+);
+
 const _forceUpdateChecks = bool.fromEnvironment('DESKTOP_UPDATE_FORCE');
 
 /// The macOS build every Mac can run, rendered on Skia: what an Intel Mac installs, what every install
@@ -156,7 +160,14 @@ String? currentBundlePath({
   String? appImagePath,
 }) {
   if (isLinux ?? RuntimePlatform.isLinux) {
-    return appImagePath ?? RuntimePlatform.environment['APPIMAGE'];
+    final image = appImagePath ?? RuntimePlatform.environment['APPIMAGE'];
+    if (image != null) return image;
+    if (_localUpdateBuilder.isNotEmpty) {
+      return File(executablePath ?? RuntimePlatform.resolvedExecutable)
+          .parent
+          .path;
+    }
+    return null;
   }
   final resolved = executablePath ?? RuntimePlatform.resolvedExecutable;
   var dir = File(resolved).parent;
@@ -189,6 +200,7 @@ class DesktopUpdater {
   final bool _enabled;
   final bool _isLinux;
   final String _architecture;
+  final String _linuxUpdateBuilder;
   final _checksInFlight = <String?, Future<DesktopUpdateCheck>>{};
 
   /// How often the background poll asks the manifest.
@@ -222,6 +234,7 @@ class DesktopUpdater {
     // Defaults to the running CPU (`arm64`/`x64`): which Linux artifact to fetch, and whether the
     // Apple Silicon macOS build is on offer. Tests override it to exercise every key from any host.
     String? architecture,
+    String? linuxUpdateBuilder,
   }) : _dio =
            dio ??
            Dio(
@@ -234,7 +247,8 @@ class DesktopUpdater {
        _metadataUrlForInstance = metadataUrl ?? _metadataUrl,
        _releaseMode = releaseMode ?? (kReleaseMode || _forceUpdateChecks),
        _isLinux = isLinux ?? RuntimePlatform.isLinux,
-       _architecture = architecture ?? _currentArchitecture();
+       _architecture = architecture ?? _currentArchitecture(),
+       _linuxUpdateBuilder = linuxUpdateBuilder ?? _localUpdateBuilder;
 
   /// The manifest entries this build may install, most preferred first — [_newestEntry] takes the
   /// newest of them, an earlier key winning a tie.
@@ -355,6 +369,8 @@ class DesktopUpdater {
   /// holds more than the hash alone authenticates. On Linux, the download itself is the artifact (a
   /// single AppImage file), so the sha256 check already covers everything there is: it is made
   /// executable and staged as-is, with nothing to unpack or recheck.
+  /// Opt-in local Linux builds instead merge the offered source tag with local
+  /// patches and stage a tested directory bundle, retaining the builder next time.
   /// Returns null (and cleans up anything partially written) on any verification failure.
   /// [onProgress] reports the DOWNLOAD only — bytes received out of
   /// [UpdateInfo.size]. The manifest's size is the denominator rather than the
@@ -369,6 +385,33 @@ class DesktopUpdater {
     if (!_enabled) return null;
     Directory? stagingDir;
     try {
+      if (_isLinux && _linuxUpdateBuilder.isNotEmpty) {
+        stagingDir = await Directory.systemTemp.createTemp(
+          'harness-local-update-',
+        );
+        final bundle = '${stagingDir.path}/bundle';
+        final result = await Process.run(_linuxUpdateBuilder, [
+          info.version,
+          bundle,
+        ]);
+        if (result.exitCode != 0 ||
+            !File('$bundle/harness').existsSync() ||
+            !File('$bundle/lib/libapp.so').existsSync() ||
+            !File('$bundle/version.txt').existsSync() ||
+            File('$bundle/version.txt')
+                    .readAsStringSync()
+                    .trim()
+                    .split('+')
+                    .first !=
+                info.version) {
+          throw StateError('Local update build failed: ${result.stderr}');
+        }
+        return StagedUpdate(
+          version: info.version,
+          bundlePath: bundle,
+          stagingDirPath: stagingDir.path,
+        );
+      }
       final response = await _dio.get<List<int>>(
         info.url,
         options: Options(responseType: ResponseType.bytes),
@@ -480,6 +523,38 @@ class DesktopUpdater {
         'DesktopUpdater: could not resolve the running bundle path — not applying',
       );
       return false;
+    }
+    if (_isLinux && _linuxUpdateBuilder.isNotEmpty) {
+      // Copy beside the install before swapping, so /tmp on another disk is safe.
+      final next = '$bundlePath.next';
+      final previous = '$bundlePath.prev';
+      final executable = '$bundlePath/harness';
+      final command =
+          '''
+set -eu
+while kill -0 $selfPid 2>/dev/null; do sleep 0.2; done
+rm -rf ${_singleQuote(next)}
+cp -a ${_singleQuote(staged.bundlePath)} ${_singleQuote(next)}
+test -x ${_singleQuote('$next/harness')}
+rm -rf ${_singleQuote(previous)}
+mv ${_singleQuote(bundlePath)} ${_singleQuote(previous)}
+if ! mv ${_singleQuote(next)} ${_singleQuote(bundlePath)}; then
+  mv ${_singleQuote(previous)} ${_singleQuote(bundlePath)}
+  nohup ${_singleQuote(executable)} >/dev/null 2>&1 &
+  exit 1
+fi
+nohup ${_singleQuote(executable)} >/dev/null 2>&1 &
+child=\$!
+sleep 5
+if ! kill -0 "\$child" 2>/dev/null; then
+  rm -rf ${_singleQuote(bundlePath)}
+  mv ${_singleQuote(previous)} ${_singleQuote(bundlePath)}
+  nohup ${_singleQuote(executable)} >/dev/null 2>&1 &
+fi
+rm -rf ${_singleQuote(staged.stagingDirPath)}
+''';
+      await _launchDetached(command);
+      return true;
     }
     final prevPath = '$bundlePath.prev';
     // On Linux, `bundlePath` IS the AppImage file (see currentBundlePath) — there is no enclosing

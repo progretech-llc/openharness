@@ -618,6 +618,108 @@ void main() {
     );
   });
 
+  group('local Linux updates', () {
+    late Directory fixtures;
+    setUp(() async {
+      fixtures = await Directory.systemTemp.createTemp(
+        "local update's fixtures ",
+      );
+    });
+    tearDown(() async => fixtures.delete(recursive: true));
+
+    Future<String> builder(String body) async {
+      final script = File('${fixtures.path}/builder');
+      await script.writeAsString('#!/bin/bash\nset -eu\n$body\n');
+      await Process.run('chmod', ['+x', script.path]);
+      return script.path;
+    }
+
+    const offer = UpdateInfo(
+      version: '1.2.93',
+      url: 'https://unused.invalid',
+      sha256: 'unused',
+      size: 0,
+    );
+
+    test('builds locally and verifies the resulting bundle version', () async {
+      final script = await builder(r'''
+mkdir -p "$2/lib"
+printf '#!/bin/sh\nexit 0\n' > "$2/harness"
+chmod +x "$2/harness"
+touch "$2/lib/libapp.so"
+printf '%s+progretech.viewer.1\n' "$1" > "$2/version.txt"
+''');
+      final staged = await DesktopUpdater(
+        isLinux: true,
+        linuxUpdateBuilder: script,
+      ).downloadAndStage(offer);
+      expect(staged, isNotNull);
+      expect(
+        File('${staged!.bundlePath}/version.txt').readAsStringSync(),
+        '1.2.93+progretech.viewer.1\n',
+      );
+      await Directory(staged.stagingDirPath).delete(recursive: true);
+    });
+
+    test('failed builds and wrong versions never produce an update', () async {
+      for (final body in [
+        'exit 1',
+        r'''
+mkdir -p "$2/lib"
+touch "$2/harness" "$2/lib/libapp.so"
+printf '1.2.90\n' > "$2/version.txt"
+''',
+      ]) {
+        final script = await builder(body);
+        expect(
+          await DesktopUpdater(
+            isLinux: true,
+            linuxUpdateBuilder: script,
+          ).downloadAndStage(offer),
+          isNull,
+        );
+      }
+    });
+
+    test(
+      'directory update restores previous bundle when launch fails',
+      () async {
+        final installed = Directory('${fixtures.path}/installed');
+        final stage = Directory('${fixtures.path}/stage');
+        final next = Directory('${stage.path}/bundle');
+        await installed.create();
+        await next.create(recursive: true);
+        final old = File('${installed.path}/harness');
+        await old.writeAsString('#!/bin/sh\nexit 0\n');
+        final bad = File('${next.path}/harness');
+        await bad.writeAsString('#!/bin/sh\nexit 1\n');
+        await Process.run('chmod', ['+x', old.path, bad.path]);
+        final updater = DesktopUpdater(
+          isLinux: true,
+          linuxUpdateBuilder: 'enabled',
+          launchDetached: (command) async {
+            final result = await Process.run('/bin/bash', ['-c', command]);
+            expect(result.exitCode, 0, reason: '${result.stderr}');
+          },
+        );
+        expect(
+          await updater.applyStaged(
+            StagedUpdate(
+              version: '1.2.93',
+              bundlePath: next.path,
+              stagingDirPath: stage.path,
+            ),
+            selfPid: 2147483647,
+            runningBundlePath: installed.path,
+          ),
+          isTrue,
+        );
+        expect(await old.readAsString(), '#!/bin/sh\nexit 0\n');
+        expect(await stage.exists(), isFalse);
+      },
+    );
+  });
+
   group('Linux architecture packaging', () {
     late List<int> appImageBytes;
     late String appImageSha;
