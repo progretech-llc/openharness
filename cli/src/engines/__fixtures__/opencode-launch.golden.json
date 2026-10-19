@@ -18,7 +18,7 @@
           "fixture prompt"
         ],
         "env": {
-          "OPENCODE_CONFIG_CONTENT": "{\"permission\":\"ask\",\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"small_model\":\"opencode/muse-spark-1.3-contributor-free\",\"provider\":{\"opencode\":{\"models\":{\"muse-spark-1.3-contributor-free\":{\"options\":{\"reasoningEffort\":\"xhigh\"}}}}},\"agent\":{\"build\":{\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"variant\":\"xhigh\"},\"plan\":{\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"variant\":\"xhigh\"}}}"
+          "OPENCODE_CONFIG_CONTENT": "{\"permission\":\"ask\",\"model\":\"ollama/qwen3-coder:30b\",\"small_model\":\"ollama/qwen3-coder:30b\",\"provider\":{\"ollama\":{\"npm\":\"@ai-sdk/openai-compatible\",\"options\":{\"baseURL\":\"http://127.0.0.1:11434/v1\"},\"models\":{\"qwen3-coder:30b\":{\"name\":\"Workstation Qwen3 Coder 30B\",\"tool_call\":true,\"limit\":{\"context\":65536,\"output\":8192}}}}},\"agent\":{\"build\":{\"model\":\"ollama/qwen3-coder:30b\"},\"plan\":{\"model\":\"ollama/qwen3-coder:30b\"}}}"
         },
         "engine": "opencode",
         "agent": null,
@@ -116,7 +116,7 @@
           "fixture prompt"
         ],
         "env": {
-          "OPENCODE_CONFIG_CONTENT": "{\"permission\":\"ask\",\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"small_model\":\"opencode/muse-spark-1.3-contributor-free\",\"provider\":{\"opencode\":{\"models\":{\"muse-spark-1.3-contributor-free\":{\"options\":{\"reasoningEffort\":\"xhigh\"}}}}},\"agent\":{\"build\":{\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"variant\":\"xhigh\"},\"plan\":{\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"variant\":\"xhigh\"}}}"
+          "OPENCODE_CONFIG_CONTENT": "{\"permission\":\"ask\",\"model\":\"ollama/qwen3-coder:30b\",\"small_model\":\"ollama/qwen3-coder:30b\",\"provider\":{\"ollama\":{\"npm\":\"@ai-sdk/openai-compatible\",\"options\":{\"baseURL\":\"http://127.0.0.1:11434/v1\"},\"models\":{\"qwen3-coder:30b\":{\"name\":\"Workstation Qwen3 Coder 30B\",\"tool_call\":true,\"limit\":{\"context\":65536,\"output\":8192}}}}},\"agent\":{\"build\":{\"model\":\"ollama/qwen3-coder:30b\"},\"plan\":{\"model\":\"ollama/qwen3-coder:30b\"}}}"
         },
         "engine": "opencode",
         "agent": "reviewer",
@@ -426,7 +426,7 @@
           "fixture prompt"
         ],
         "env": {
-          "OPENCODE_CONFIG_CONTENT": "{\"permission\":\"ask\",\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"small_model\":\"opencode/muse-spark-1.3-contributor-free\",\"provider\":{\"opencode\":{\"models\":{\"muse-spark-1.3-contributor-free\":{\"options\":{\"reasoningEffort\":\"xhigh\"}}}}},\"agent\":{\"build\":{\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"variant\":\"xhigh\"},\"plan\":{\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"variant\":\"xhigh\"}}}"
+          "OPENCODE_CONFIG_CONTENT": "{\"permission\":\"ask\",\"model\":\"ollama/qwen3-coder:30b\",\"small_model\":\"ollama/qwen3-coder:30b\",\"provider\":{\"ollama\":{\"npm\":\"@ai-sdk/openai-compatible\",\"options\":{\"baseURL\":\"http://127.0.0.1:11434/v1\"},\"models\":{\"qwen3-coder:30b\":{\"name\":\"Workstation Qwen3 Coder 30B\",\"tool_call\":true,\"limit\":{\"context\":65536,\"output\":8192}}}}},\"agent\":{\"build\":{\"model\":\"ollama/qwen3-coder:30b\"},\"plan\":{\"model\":\"ollama/qwen3-coder:30b\"}}}"
         },
         "engine": "opencode",
         "agent": null,
@@ -800,7 +800,7 @@
           "fixture prompt"
         ],
         "env": {
-          "OPENCODE_CONFIG_CONTENT": "{\"permission\":\"ask\",\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"small_model\":\"opencode/muse-spark-1.3-contributor-free\",\"provider\":{\"opencode\":{\"models\":{\"muse-spark-1.3-contributor-free\":{\"options\":{\"reasoningEffort\":\"xhigh\"}}}}},\"agent\":{\"build\":{\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"variant\":\"xhigh\"},\"plan\":{\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"variant\":\"xhigh\"}}}"
+          "OPENCODE_CONFIG_CONTENT": "{\"permission\":\"ask\",\"model\":\"ollama/qwen3-coder:30b\",\"small_model\":\"ollama/qwen3-coder:30b\",\"provider\":{\"ollama\":{\"npm\":\"@ai-sdk/openai-compatible\",\"options\":{\"baseURL\":\"http://127.0.0.1:11434/v1\"},\"models\":{\"qwen3-coder:30b\":{\"name\":\"Workstation Qwen3 Coder 30B\",\"tool_call\":true,\"limit\":{\"context\":65536,\"output\":8192}}}}},\"agent\":{\"build\":{\"model\":\"ollama/qwen3-coder:30b\"},\"plan\":{\"model\":\"ollama/qwen3-coder:30b\"}}}"
         },
         "engine": "opencode",
         "agent": null,
@@ -898,7 +898,7 @@
           "fixture prompt"
         ],
         "env": {
-          "OPENCODE_CONFIG_CONTENT": "{\"permission\":\"ask\",\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"small_model\":\"opencode/muse-spark-1.3-contributor-free\",\"provider\":{\"opencode\":{\"models\":{\"muse-spark-1.3-contributor-free\":{\"options\":{\"reasoningEffort\":\"xhigh\"}}}}},\"agent\":{\"build\":{\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"variant\":\"xhigh\"},\"plan\":{\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"variant\":\"xhigh\"}}}"
+          "OPENCODE_CONFIG_CONTENT": "{\"permission\":\"ask\",\"model\":\"ollama/qwen3-coder:30b\",\"small_model\":\"ollama/qwen3-coder:30b\",\"provider\":{\"ollama\":{\"npm\":\"@ai-sdk/openai-compatible\",\"options\":{\"baseURL\":\"http://127.0.0.1:11434/v1\"},\"models\":{\"qwen3-coder:30b\":{\"name\":\"Workstation Qwen3 Coder 30B\",\"tool_call\":true,\"limit\":{\"context\":65536,\"output\":8192}}}}},\"agent\":{\"build\":{\"model\":\"ollama/qwen3-coder:30b\"},\"plan\":{\"model\":\"ollama/qwen3-coder:30b\"}}}"
         },
         "engine": "opencode",
         "agent": "reviewer",
@@ -1208,7 +1208,7 @@
           "fixture prompt"
         ],
         "env": {
-          "OPENCODE_CONFIG_CONTENT": "{\"permission\":\"ask\",\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"small_model\":\"opencode/muse-spark-1.3-contributor-free\",\"provider\":{\"opencode\":{\"models\":{\"muse-spark-1.3-contributor-free\":{\"options\":{\"reasoningEffort\":\"xhigh\"}}}}},\"agent\":{\"build\":{\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"variant\":\"xhigh\"},\"plan\":{\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"variant\":\"xhigh\"}}}"
+          "OPENCODE_CONFIG_CONTENT": "{\"permission\":\"ask\",\"model\":\"ollama/qwen3-coder:30b\",\"small_model\":\"ollama/qwen3-coder:30b\",\"provider\":{\"ollama\":{\"npm\":\"@ai-sdk/openai-compatible\",\"options\":{\"baseURL\":\"http://127.0.0.1:11434/v1\"},\"models\":{\"qwen3-coder:30b\":{\"name\":\"Workstation Qwen3 Coder 30B\",\"tool_call\":true,\"limit\":{\"context\":65536,\"output\":8192}}}}},\"agent\":{\"build\":{\"model\":\"ollama/qwen3-coder:30b\"},\"plan\":{\"model\":\"ollama/qwen3-coder:30b\"}}}"
         },
         "engine": "opencode",
         "agent": null,
@@ -1298,7 +1298,7 @@
           "fixture prompt"
         ],
         "env": {
-          "OPENCODE_CONFIG_CONTENT": "{\"permission\":\"ask\",\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"small_model\":\"opencode/muse-spark-1.3-contributor-free\",\"provider\":{\"opencode\":{\"models\":{\"muse-spark-1.3-contributor-free\":{\"options\":{\"reasoningEffort\":\"xhigh\"}}}}},\"agent\":{\"build\":{\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"variant\":\"xhigh\"},\"plan\":{\"model\":\"opencode/muse-spark-1.3-contributor-free\",\"variant\":\"xhigh\"}}}"
+          "OPENCODE_CONFIG_CONTENT": "{\"permission\":\"ask\",\"model\":\"ollama/qwen3-coder:30b\",\"small_model\":\"ollama/qwen3-coder:30b\",\"provider\":{\"ollama\":{\"npm\":\"@ai-sdk/openai-compatible\",\"options\":{\"baseURL\":\"http://127.0.0.1:11434/v1\"},\"models\":{\"qwen3-coder:30b\":{\"name\":\"Workstation Qwen3 Coder 30B\",\"tool_call\":true,\"limit\":{\"context\":65536,\"output\":8192}}}}},\"agent\":{\"build\":{\"model\":\"ollama/qwen3-coder:30b\"},\"plan\":{\"model\":\"ollama/qwen3-coder:30b\"}}}"
         },
         "engine": "opencode",
         "agent": "reviewer",

@@ -1,13 +1,13 @@
 import { expect, it } from 'vitest'
-import { freshHarnessEnvironment, DEFAULT_HARNESS_MODEL, DEFAULT_HARNESS_EFFORT } from './harnessDefaults.js'
+import { freshHarnessEnvironment, DEFAULT_HARNESS_MODEL } from './harnessDefaults.js'
 
-it('selects Muse for fresh OpenCode harnesses while retaining package tools', () => {
+it('selects workstation Ollama for fresh OpenCode harnesses while retaining package tools', () => {
   const mcp = { harnessd: { type: 'local', command: ['harness', 'pair', 'mcp'] } }
   const env = freshHarnessEnvironment('opencode', { OPENCODE_CONFIG_CONTENT: JSON.stringify({ mcp }), TOKEN_FILE: '/token' })
   expect(JSON.parse(env.OPENCODE_CONFIG_CONTENT!)).toMatchObject({
     mcp, permission: 'allow', model: DEFAULT_HARNESS_MODEL, small_model: DEFAULT_HARNESS_MODEL,
-    provider: { opencode: { models: { 'muse-spark-1.3-contributor-free': { options: { reasoningEffort: DEFAULT_HARNESS_EFFORT } } } } },
-    agent: { build: { model: DEFAULT_HARNESS_MODEL, variant: 'xhigh' }, plan: { model: DEFAULT_HARNESS_MODEL, variant: 'xhigh' } },
+    provider: { ollama: { options: { baseURL: 'http://127.0.0.1:11434/v1' }, models: { 'qwen3-coder:30b': { tool_call: true } } } },
+    agent: { build: { model: DEFAULT_HARNESS_MODEL }, plan: { model: DEFAULT_HARNESS_MODEL } },
   })
   expect(env.TOKEN_FILE).toBe('/token')
 })
@@ -20,7 +20,7 @@ it('retains explicit tool denials and custom provider and agent settings', () =>
   }
   const result = JSON.parse(freshHarnessEnvironment('opencode', { OPENCODE_CONFIG_CONTENT: JSON.stringify(config) }).OPENCODE_CONFIG_CONTENT!)
   expect(result.permission).toEqual({ '*': 'allow', bash: { 'rm *': 'deny' } })
-  expect(result.provider.opencode).toMatchObject({ options: { timeout: 5000 }, models: { 'muse-spark-1.3-contributor-free': { options: { temperature: 0.4, reasoningEffort: 'xhigh' } } } })
+  expect(result.provider.opencode).toMatchObject({ options: { timeout: 5000 }, models: { 'muse-spark-1.3-contributor-free': { options: { temperature: 0.4 } } } })
   expect(result.agent.build.prompt).toBe('Project instructions')
 })
 
