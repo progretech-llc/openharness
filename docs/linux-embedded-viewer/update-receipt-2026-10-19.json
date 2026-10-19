@@ -1,0 +1,49 @@
+{
+  "version": "1.2.93+progretech.viewer.1",
+  "pid": 3422373,
+  "webview_plugin_loaded": true,
+  "previous_version": "1.2.90+progretech.viewer.1",
+  "backup": "/mnt/PT-Storage/Tools & Assets/Harness/Desktop.prev",
+  "installation": "/mnt/PT-Storage/Tools & Assets/Harness/Desktop",
+  "task": "harness-patch-preserving-update",
+  "owner": "Codex workstation session PID 28322, started 2026-10-19",
+  "producer": "Current owner-selected Codex session; no delegation",
+  "state": "complete",
+  "objective": "Use the normal desktop Update button while retaining the committed Linux webview and workstation patches",
+  "source_branch": "progretech/patch-preserving-desktop-updates",
+  "canonical_repository": "https://github.com/progretech-llc/openharness",
+  "validated_source_commit": "1053445565593446b712e30d1a5aaaba7e29ba0f",
+  "validated_source_tree": "330283412dc1b6306fca10b4c0e94a70144008ae",
+  "upstream_tag": "v1.2.93_desktop",
+  "changed_paths": [
+    "desktop/lib/update/desktop_updater.dart",
+    "desktop/scripts/build-local-update.py",
+    "desktop/test/desktop_updater_test.dart",
+    "docs/linux-embedded-viewer/README.md"
+  ],
+  "checks": {
+    "changed_dart_analysis": "passed",
+    "updater_viewer_dialog_tests": {
+      "passed": 51,
+      "skipped": 3
+    },
+    "native_linux_viewer": "passed: page load, JavaScript interaction, modal hide/restore",
+    "linux_release_build": "passed",
+    "directory_swap_rollback_fixture": "passed",
+    "builder_version_validation": "passed",
+    "embedded_persistent_builder_path": true,
+    "post_install_launch": "passed: running after 8 seconds"
+  },
+  "artifacts_sha256": {
+    "harness": "6329848acab79d0e53e29e154ab60fc28eddeb27d797c6cbf70c411ef23b17b3",
+    "lib/libapp.so": "c59c0be0f94ddb63e7a91161fa4978981752efc2d5d7bcf18a220079a9daea23",
+    "lib/libwebview_all_linux_plugin.so": "3fa8451505389a3734ef679115e362aedc84b5916fd6316bfefbcca78952ce86"
+  },
+  "remaining_limits": [
+    "Future upstream source conflicts stop the update and require maintenance",
+    "Each update requires the canonical committed patch checkout and installed Linux build toolchain",
+    "macOS checks skipped on this Linux workstation; no cloud deployment or CLI replacement"
+  ],
+  "rollback": "Stop the desktop, move Desktop aside, restore Desktop.prev to Desktop and relaunch its harness executable; session/profile data remains outside the bundle",
+  "release_state": "Installed locally; source pushed on named fork branch; not merged into upstream or publicly released"
+}

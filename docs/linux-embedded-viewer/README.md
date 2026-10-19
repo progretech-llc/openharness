@@ -103,3 +103,9 @@ continues displaying Installing while building. No official binary hash is used
 for a locally compiled artifact: its inputs are the official source tag and the
 local committed source, recorded in `local-update-source.txt` beside the binary.
 A source conflict requires maintenance rather than automatic patch rewriting.
+
+Installed `1.2.93+progretech.viewer.1` and verified the running process loaded the
+Linux webview plugin. All 51 selected tests passed (three macOS-only checks
+skipped), as did the native viewer fixture, changed Dart analysis and release
+build. The build tree matches the canonical fork checkout after integrating
+`v1.2.93_desktop`. See `update-receipt-2026-10-19.json` for scoped evidence and rollback.
