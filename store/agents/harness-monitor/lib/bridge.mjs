@@ -4,7 +4,7 @@
  * Node's WebSocket talks only to `ws://127.0.0.1:18473/api/local-ws`; Harness owns pairing, encryption
  * and every remote machine behind it. The handshake is the one the Grid harness uses — `machine_select`,
  * wait for `connected`, then typed request/reply frames whose answer is `<type>_result` carrying the
- * same `requestId`. Nothing here reaches the network, and no credential passes through this file.
+ * same `requestId`. Nothing here reaches the network, and the local OS-user credential travels only in a request header.
  *
  * Inventory and lifecycle use the same daemon APIs as the desktop. `agent_delete` stops the validated
  * process and retains its history; `agent_resume` restores the daemon's saved launch configuration.
@@ -14,6 +14,8 @@
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { homedir } from 'node:os'
+import { constants, openSync, fstatSync, readFileSync, closeSync, lstatSync } from 'node:fs'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 const exec = promisify(execFile)
@@ -27,6 +29,22 @@ export function bridgeUrl(env = process.env) {
     throw new Error('The Harness bridge must be its local WebSocket endpoint.')
   }
   return url.href
+}
+
+/** Same uid/mode/format checks as the native hook credential reader. Never put it in a URL. */
+export function bridgeHeaders(env = process.env) {
+  const root = env.ADAPTER_DATA_DIR || join(homedir(), '.harness', 'cli', 'data')
+  let fd
+  try {
+    const dir = lstatSync(root)
+    const uid = process.getuid?.()
+    if (!dir.isDirectory() || dir.isSymbolicLink() || (dir.mode & 0o077) || (uid !== undefined && dir.uid !== uid)) return {}
+    fd = openSync(join(root, 'hook-credential'), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+    const stat = fstatSync(fd)
+    if (!stat.isFile() || stat.size > 128 || (stat.mode & 0o777) !== 0o600 || (uid !== undefined && stat.uid !== uid)) return {}
+    const value = readFileSync(fd, 'utf8').trim()
+    return /^[A-Za-z0-9_-]{43}$/.test(value) ? { 'X-Harness-Local': value } : {}
+  } catch { return {} } finally { if (fd !== undefined) closeSync(fd) }
 }
 
 /** Every machine this daemon can reach, the current one flagged, and — when the list could not be
@@ -82,7 +100,7 @@ function sessionsFor(WebSocketImpl) {
 
 function openSession(machineId, { env, timeoutMs, WebSocketImpl, forceReconnect = false }) {
   const byMachine = sessionsFor(WebSocketImpl)
-  const socket = new WebSocketImpl(bridgeUrl(env))
+  const socket = new WebSocketImpl(bridgeUrl(env), { headers: bridgeHeaders(env) })
   const pending = new Map()
   let closed = null
   const session = { socket, pending, ready: null, close: null }

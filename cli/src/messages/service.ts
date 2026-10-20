@@ -1,3 +1,4 @@
+import { ownedFollowups } from './owned.js'
 /**
  * Agent Messages (docs/design/2026-10-10-agent-messages.md): harnesses in one tab message each other with `harness
  * send`, while the account has Agent Messages on (Settings ▸ Experimental, off by default). This is the whole service,
@@ -164,6 +165,7 @@ export function startAgentMessages(core: CoreApi, options: MessagesOptions = {})
   // harness started by another reaches it only through a tab they share, like any teammate (owner, 2026-10-11, on
   // finding agents messaging each other with no tab turned on).
   const lineage = new Ledger(options.ledgerFile ?? ledgerPath(core.dataDir))
+  const owned = ownedFollowups(core,lineage,join(stateDir,'owned-followups.json'),()=>readAgentSettings(core.dataDir).agentsStartAgents,now)
   const inbox = new PaneInbox(options.inboxRoot ?? env.HARNESS_AGENT_MESSAGES_DIR)
   /** Other machines' names for their agents, with when they were asked; a branch only for a harness in a shared tab. */
   const who = new Map<string, { name: string; engine: string; project?: string; branch?: string; at: number }>()
@@ -1449,7 +1451,7 @@ export function startAgentMessages(core: CoreApi, options: MessagesOptions = {})
     }
   }
 
-  const stopHearing = core.turns.onDelivery((event: TurnDelivery) => mailbox.observe(event))
+  const stopHearing = core.turns.onDelivery((event: TurnDelivery) => { mailbox.observe(event); owned.observe(event) })
   // Asleep, a changed desk is read when it wakes, not now. Shared tabs read theirs after the desk, whose panes they take.
   const stopNotices = core.account.onNotice((notice) => {
     if (notice.type === 'desk_changed' && !asleep()) void directory.refresh(true).then(() => shared?.refresh()).catch(() => {})
@@ -1524,8 +1526,8 @@ export function startAgentMessages(core: CoreApi, options: MessagesOptions = {})
         if (!asker.owner) throw new MessageError('OWNER_REQUIRED', 'Agent Messages answer only the owner.')
         // A pane is only this machine's to name; a hand-over, its status and its names are another machine's
         // daemon's to ask, over the relay, never a process here's.
-        const fromHere = ['send'].includes(String(payload.action))
-        if (['send', 'deliver', 'status', 'who', 'started', 'tab_pub', 'tab_pin', 'tab_pin_changed', 'tab_keychange'].includes(String(payload.action)) && asker.local !== fromHere) {
+        const fromHere = ['send','owned_send','owned_status','owned_grant'].includes(String(payload.action))
+        if (['send', 'owned_send', 'owned_status', 'owned_grant', 'deliver', 'status', 'who', 'started', 'tab_pub', 'tab_pin', 'tab_pin_changed', 'tab_keychange'].includes(String(payload.action)) && asker.local !== fromHere) {
           throw new MessageError(fromHere ? 'LOCAL_ONLY' : 'REMOTE_ONLY', fromHere ? 'harness send runs in a pane on this machine.' : 'Only another of your machines hands messages over.')
         }
         // The person's own windows, here or over the relay, manage shared tabs; another of the owner's machines asks
@@ -1533,6 +1535,9 @@ export function startAgentMessages(core: CoreApi, options: MessagesOptions = {})
         // `removeHarness`).
         if (SHARE_ACTIONS.includes(String(payload.action))) return shareAction(payload)
         switch (payload.action) {
+          case 'owned_grant':
+          case 'owned_send':
+          case 'owned_status': return owned.request(payload)
           case 'send': return send(payload)
           case 'deliver': return deliver(payload)
           case 'status': return statusOf(payload)
@@ -1554,7 +1559,7 @@ export function startAgentMessages(core: CoreApi, options: MessagesOptions = {})
         ? { error: error.code, detail: error.message }
         : { error: 'MESSAGES_UNAVAILABLE', detail: 'Agent Messages are unavailable right now. Nothing was sent.' })),
     },
-    canWrite: (deliveryId) => mailbox.canWrite(deliveryId),
+    canWrite: (deliveryId) => deliveryId.startsWith('team:owned:') ? owned.canWrite(deliveryId) : mailbox.canWrite(deliveryId),
     reconnected: () => {
       mailbox.takeBackAttempts()
       const was = mode

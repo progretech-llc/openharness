@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { addressOf, agentOrigin, AGENTS_START_AGENTS_OFF, closeCommand, DEPTH_REFUSAL, EXIT, parseDuration, psCommand, refusalNext, showCommand, spawnCheck, spawnCount, spawnRefusal, SPAWN_LIMITS, step, waitCommand, whoamiCommand, type ClientDeps } from './commands.js'
+import { addressOf, agentOrigin, delegateFollowupCommand, followupCommand, AGENTS_START_AGENTS_OFF, closeCommand, DEPTH_REFUSAL, EXIT, parseDuration, psCommand, refusalNext, showCommand, spawnCheck, spawnCount, spawnRefusal, SPAWN_LIMITS, step, waitCommand, whoamiCommand, type ClientDeps } from './commands.js'
 import { AgentClientError, type Daemon, type Where } from './daemon.js'
 import { Ledger, ledgerPath } from './ledger.js'
 import { agentSettingsPath } from '../lib/agentSettings.js'
@@ -1658,4 +1658,34 @@ describe('harness whoami', () => {
     expect(await whoamiCommand(['x'], h.deps)).toBe(EXIT.usage)
     expect(h.err[0]).toBe('harness whoami takes no names and no --machine: it is about you, here.')
   })
+})
+
+
+describe('native owned follow-up',()=>{
+ it('checks exact ownership and sends bounded text through the native service, without pane spoofing',async()=>{
+  const d=new FakeDaemon();d.frames=[frame('kid')]
+  d.extra.agent_messages=p=>({key:p.key,state:'queued'})
+  const h=harness(d,{pane:undefined,env:{AI_AGENT:'mesh',HARNESS_AGENT_SESSION:'control'}})
+  started(h.ledger,'agent:mesh:control','kid')
+  const file=join(dir,'prompt');writeFileSync(file,'bounded task')
+  expect(await followupCommand(['kid','--text-file',file,'--key','intent','--json'],h.deps)).toBe(EXIT.ok)
+  expect(d.requests.find(r=>r.type==='agent_messages')?.payload).toMatchObject({action:'owned_send',caller:'agent:mesh:control',target:'kid',text:'bounded task',key:'intent'})
+ })
+ it('refuses another owner and a worker waiting for the person',async()=>{
+  const d=new FakeDaemon();d.frames=[frame('lead'),frame('kid')];const h=harness(d)
+  expect(await followupCommand(['kid','--text-file','missing','--key','intent'],h.deps)).toBe(EXIT.refused)
+  started(h.ledger,'lead','kid');d.screens.set('kid',['needs_input'])
+  expect(await followupCommand(['kid','--text-file','missing','--key','intent'],h.deps)).toBe(EXIT.failed)
+  expect(d.requests.some(r=>r.type==='agent_messages')).toBe(false)
+ })
+})
+
+it('a self-granted controller may follow up but still cannot close the original persons session',async()=>{
+ const d=new FakeDaemon();d.frames=[frame('lead'),frame('manual')];const h=harness(d)
+ h.ledger.append({kind:'followup-delegation',at:NOW,target:{machineId:'m',agentId:'manual'},controller:{machineId:'m',agentId:'lead'},enabled:true})
+ expect(await followupCommand(['manual','--check','--json'],h.deps)).toBe(EXIT.ok)
+ expect(await closeCommand(['manual'],h.deps)).toBe(EXIT.refused)
+ d.extra.agent_messages=p=>({allowed:p.enabled})
+ expect(await delegateFollowupCommand(['manual','--controller','agent:mesh:control'],h.deps)).toBe(EXIT.refused)
+ expect(await delegateFollowupCommand(['lead','--controller','agent:mesh:control'],h.deps)).toBe(EXIT.ok)
 })

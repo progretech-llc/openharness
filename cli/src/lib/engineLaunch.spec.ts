@@ -657,7 +657,9 @@ printf '%s %s' "$harness_status" "$resumed"`], { encoding: 'utf8', stdio: ['igno
           env: { HOME: home, PATH: path }, encoding: 'utf8',
         }).trim().split('\n')
       }
-      expect(run('/usr/bin:/bin')).toEqual([`/usr/bin:/bin:${runtimeBin}`, join(runtimeBin, 'node')])
+      // /usr/bin/node exists on Linux: an actual empty PATH is the missing-node fixture.
+      const emptyBin=join(home,'empty-bin');mkdirSync(emptyBin)
+      expect(run(emptyBin)).toEqual([`${emptyBin}:${runtimeBin}`, join(runtimeBin, 'node')])
       const own = join(home, 'own')
       mkdirSync(own)
       writeFileSync(join(own, 'node'), '#!/bin/sh\n', { mode: 0o755 })

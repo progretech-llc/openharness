@@ -2,7 +2,7 @@
  * `harness help agents`: all an agent needs on one screen (docs/design/2026-10-15-agent-experience.md, part 4). Each
  * verb's line is its own usage's first line, so this cannot name an option the verb does not take.
  */
-import { CLOSE_USAGE, EXIT, PS_USAGE, SHOW_USAGE, SPAWN_LIMITS, WAIT_USAGE, WHOAMI_USAGE } from './commands.js'
+import { CLOSE_USAGE, EXIT, FOLLOWUP_USAGE, PS_USAGE, SHOW_USAGE, SPAWN_LIMITS, WAIT_USAGE, WHOAMI_USAGE } from './commands.js'
 import { NEW_USAGE } from '../lib/newCommand.js'
 import { SEND_USAGE } from '../messages/command.js'
 import { outsideCaller } from './model.js'
@@ -24,6 +24,7 @@ export function agentsHelp(): string {
     `        ${synopsis(SHOW_USAGE)}`,
     `        ${synopsis(CLOSE_USAGE)}`,
     `        ${sendLine()}`,
+    `        ${synopsis(FOLLOWUP_USAGE)}`,
     '',
     'A whole job:',
     '  harness new <agent> --name <name> <project> -- <task>',
@@ -37,7 +38,7 @@ export function agentsHelp(): string {
       + `${EXIT.stopped} stopped or gone · ${EXIT.refused} refused (do not retry) · ${EXIT.timeout} still working when the wait ended.`,
     `Limits: ${SPAWN_LIMITS.livePerHarness} of yours open at once, ${SPAWN_LIMITS.perWindow} starts in ${SPAWN_LIMITS.windowMs / 60_000} minutes;`,
     'a harness another agent started may not start harnesses.',
-    'Rules: name every harness. Put the whole task in it: you cannot message it after.',
+    'Rules: name every harness and put the whole task in it. A bounded followup may continue only your own idle worker.',
     'Close what you started once you have its answer. Never close one you did not start.',
     'When a harness needs the person, tell the person: only they answer it.',
     'Never ask a harness to publish, deploy, delete or push.',

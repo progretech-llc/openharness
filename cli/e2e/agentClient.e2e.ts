@@ -349,6 +349,31 @@ describe('Harness for agents, end to end', () => {
     expect(shown.out).toContain('the agent that started you. It reads your answer itself.]')
     expect(shown.out).toContain('check it')
 
+    // Factory owner, 2026-10-20: continuing one's own worker is a distinct native capability.
+    // It uses core delivery receipts, never a made-up pane or the person's composer route.
+    const brief=join(d.root,'owned-followup.txt');writeFileSync(brief,'second bounded task')
+    const refused=await run('followup','theirs','--text-file',brief,'--key','not-yours','--json')
+    expect(refused.code,refused.out+refused.err).toBe(5)
+    const sent=await run('followup','helper','--text-file',brief,'--key','second-task','--json')
+    expect(sent.code,sent.out+sent.err).toBe(0)
+    expect(JSON.parse(sent.out).state).toBe('queued')
+    await until('owned follow-up actually delivered',async()=>{
+      const receipt=await run('followup','helper','--status','--key','second-task','--json')
+      return ['delivered','started'].includes(JSON.parse(receipt.out).state)
+    },60000)
+    await run('wait','helper','--timeout','2m')
+    const followed=await run('show','helper');expect(followed.out).toContain('second bounded task')
+
+    const manual=((await client.request<{agents:Array<Record<string,any>>}>('agents_list',{},30000)).agents).find(a=>a.name==='theirs')!
+    const grant=await harness(d,String(manual.tmuxPane),['delegate-followup','theirs','--controller','claude-code:outside-session','--json'])
+    expect(grant.code,grant.out+grant.err).toBe(0)
+    const delegated=await run('followup','theirs','--text-file',brief,'--key','delegated-task','--json')
+    expect(delegated.code,delegated.out+delegated.err).toBe(0)
+    await until('delegated native turn started',async()=>{
+      const receipt=await run('followup','theirs','--status','--key','delegated-task','--json')
+      return ['delivered','started'].includes(JSON.parse(receipt.out).state)
+    },60000)
+    await run('wait','theirs','--timeout','2m')
     const person = await run('close', 'theirs')
     expect(person.code).toBe(5)
     expect(person.err).toContain('You did not start theirs')

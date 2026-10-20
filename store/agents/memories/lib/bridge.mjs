@@ -1,3 +1,22 @@
+
+import { constants, openSync, fstatSync, readFileSync, closeSync, lstatSync } from 'node:fs'
+import { join } from 'node:path'
+/** Same uid/mode/format checks as the native hook credential reader. Never put it in a URL. */
+export function bridgeHeaders(env = process.env) {
+  const root = env.ADAPTER_DATA_DIR || join(homedir(), '.harness', 'cli', 'data')
+  let fd
+  try {
+    const dir = lstatSync(root)
+    const uid = process.getuid?.()
+    if (!dir.isDirectory() || dir.isSymbolicLink() || (dir.mode & 0o077) || (uid !== undefined && dir.uid !== uid)) return {}
+    fd = openSync(join(root, 'hook-credential'), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+    const stat = fstatSync(fd)
+    if (!stat.isFile() || stat.size > 128 || (stat.mode & 0o777) !== 0o600 || (uid !== undefined && stat.uid !== uid)) return {}
+    const value = readFileSync(fd, 'utf8').trim()
+    return /^[A-Za-z0-9_-]{43}$/.test(value) ? { 'X-Harness-Local': value } : {}
+  } catch { return {} } finally { if (fd !== undefined) closeSync(fd) }
+}
+
 /**
  * The daemon, over the loopback bridge Harness already serves (copied from Harness Monitor's lib/bridge.mjs:
  * a package installs alone, so each carries its own).
@@ -5,7 +24,7 @@
  * Node's WebSocket talks only to `ws://127.0.0.1:18473/api/local-ws`; Harness owns pairing, encryption
  * and every remote machine behind it. The handshake is the one the Grid harness uses — `machine_select`,
  * wait for `connected`, then typed request/reply frames whose answer is `<type>_result` carrying the
- * same `requestId`. Nothing here reaches the network, and no credential passes through this file.
+ * same `requestId`. Nothing here reaches the network, and the local OS-user credential travels only in a request header.
  *
  * Memories asks each machine for what its agents remember (`memory_snapshot`) and hands it the person's
  * About You (`memory_about_put`) and the person's on/off choice (`memory_deliver`). Writes are never
@@ -83,7 +102,7 @@ function sessionsFor(WebSocketImpl) {
 
 function openSession(machineId, { env, timeoutMs, WebSocketImpl, forceReconnect = false }) {
   const byMachine = sessionsFor(WebSocketImpl)
-  const socket = new WebSocketImpl(bridgeUrl(env))
+  const socket = new WebSocketImpl(bridgeUrl(env), { headers: bridgeHeaders(env) })
   const pending = new Map()
   let closed = null
   const session = { socket, pending, ready: null, close: null }

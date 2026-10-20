@@ -2534,7 +2534,7 @@ async function logsExportCommand(json: boolean): Promise<void> {
 import { orchestratorCommand } from './orchestrator/command.js'
 import { superTabCommand } from './superTabs/command.js'
 import { paneOwner, sendCommand } from './messages/command.js'
-import { agentOrigin, closeCommand, psCommand, showCommand, waitCommand, whoamiCommand } from './agentClient/commands.js'
+import { agentOrigin, closeCommand, delegateFollowupCommand, followupCommand, psCommand, showCommand, waitCommand, whoamiCommand } from './agentClient/commands.js'
 import { agentsHelp, helpFor } from './agentClient/help.js'
 import { openUrlCommand } from './agentClient/openUrl.js'
 import { harnessRunner, mcpCommand } from './agentClient/mcp.js'
@@ -2570,6 +2570,12 @@ if (cmd === 'version' || cmd === '--version' || cmd === '-v') { console.log(VERS
 switch (cmd) {
   case 'privacy':
     privacyCommand(args[0], flags.includes('--json')).catch(onError)
+    break
+  case 'delegate-followup':
+    delegateFollowupCommand(rest).then(code => { process.exitCode = code }).catch(onError)
+    break
+  case 'followup':
+    followupCommand(rest).then(code => { process.exitCode = code }).catch(onError)
     break
   case 'send':
     sendCommand(rest).then(code => { process.exitCode = code }).catch(onError)

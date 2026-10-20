@@ -51,9 +51,10 @@ describe('dshNodeFallback', () => {
   afterEach(() => { seams.sh = false; rmSync(dir, { recursive: true, force: true }) })
 
   it('puts the Node this daemon runs on at the END of a PATH that has no node', async () => {
-    const result = await runDshCommand('echo "$PATH"; command -v node', { cwd: dir, env: { PATH: '/usr/bin:/bin' } })
+    const empty=join(dir,'empty-bin');mkdirSync(empty)
+    const result = await runDshCommand('echo "$PATH"; command -v node', { cwd: dir, env: { PATH: empty } })
     const runtimeBin = dirname(managedNodePath())
-    expect(result.lines).toEqual([`/usr/bin:/bin:${runtimeBin}`, join(runtimeBin, 'node')])
+    expect(result.lines).toEqual([`${empty}:${runtimeBin}`, join(runtimeBin, 'node')])
   })
 
   it('leaves a PATH that already has a node alone', async () => {

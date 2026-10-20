@@ -27,9 +27,12 @@ const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
 const actual: Record<string, unknown> = {}
 
 function normalize(value: unknown, label?: string): unknown {
+  // /usr/bin is also a literal engine search path; do not rewrite it just because Linux keeps Node there.
+  const nodeDir=dirname(process.execPath)
+  const nodeDirMarker=['/usr/bin','/bin'].includes(nodeDir)?nodeDir:'<node-dir>'
   let text = JSON.stringify(value ?? null).split(root).join('<root>')
     .split(process.cwd()).join('<repo>')
-    .split(process.execPath).join('<node>').split(dirname(process.execPath)).join('<node-dir>')
+    .split(process.execPath).join('<node>').split(nodeDir).join(nodeDirMarker)
     .replace(/\/launch\/[0-9a-f-]{36}\.sh/g, '/launch/<script>.sh')
   if (label) text = text.split(label).join('<pane-label>')
   return JSON.parse(text)

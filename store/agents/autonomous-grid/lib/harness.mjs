@@ -1,3 +1,23 @@
+
+import { constants, openSync, fstatSync, readFileSync, closeSync, lstatSync } from 'node:fs'
+import { join } from 'node:path'
+import { homedir } from 'node:os'
+/** Same uid/mode/format checks as the native hook credential reader. Never put it in a URL. */
+export function bridgeHeaders(env = process.env) {
+  const root = env.ADAPTER_DATA_DIR || join(homedir(), '.harness', 'cli', 'data')
+  let fd
+  try {
+    const dir = lstatSync(root)
+    const uid = process.getuid?.()
+    if (!dir.isDirectory() || dir.isSymbolicLink() || (dir.mode & 0o077) || (uid !== undefined && dir.uid !== uid)) return {}
+    fd = openSync(join(root, 'hook-credential'), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+    const stat = fstatSync(fd)
+    if (!stat.isFile() || stat.size > 128 || (stat.mode & 0o777) !== 0o600 || (uid !== undefined && stat.uid !== uid)) return {}
+    const value = readFileSync(fd, 'utf8').trim()
+    return /^[A-Za-z0-9_-]{43}$/.test(value) ? { 'X-Harness-Local': value } : {}
+  } catch { return {} } finally { if (fd !== undefined) closeSync(fd) }
+}
+
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -23,7 +43,7 @@ export function bridgeUrl(env = process.env) {
 export async function harnessExecute(machine, args, { timeoutMs = 15_000, inherit = false, signal, thinking, env = process.env, WebSocketImpl = globalThis.WebSocket } = {}) {
   if (!WebSocketImpl) return { ok: false, code: 127, stdout: '', stderr: '', error: 'Node 22 or newer is required for Harness machine connections.' };
   let socket;
-  try { socket = new WebSocketImpl(bridgeUrl(env)); }
+  try { socket = new WebSocketImpl(bridgeUrl(env), { headers: bridgeHeaders(env) }); }
   catch { return { ok: false, code: 127, stdout: '', stderr: '', error: 'Could not open the local Harness bridge.' }; }
   return await new Promise(resolve => {
     let done = false, running = false, selected = false, heartbeat, deadline;

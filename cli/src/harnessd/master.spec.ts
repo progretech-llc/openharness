@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
@@ -308,7 +308,7 @@ describe('runMaster', { timeout: 60_000 }, () => {
     const bin = join(runtime, 'node-v1', 'bin')
     mkdirSync(bin, { recursive: true })
     const node = join(bin, 'node')
-    linkSync(process.execPath, node)
+    copyFileSync(process.execPath, node)
     const ran = join(dir, 'ran')
     const core = join(dir, 'core.cjs')
     writeFileSync(core, `

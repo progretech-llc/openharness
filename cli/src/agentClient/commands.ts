@@ -1159,3 +1159,46 @@ export async function agentOrigin(deps: ClientDeps = {}, record: Rpc = messagesR
     },
   }
 }
+
+/** Continue only a worker this exact caller started. Shared-tab send keeps its own rules. */
+export const FOLLOWUP_USAGE='Usage: harness followup <name> --text-file PATH --key ID [--json] | --status --key ID [--json] | --check [--json]'
+export function followupCommand(argv: readonly string[], deps: ClientDeps = {}): Promise<number> {
+  const usage=FOLLOWUP_USAGE
+  return run(usage,deps,wantsJson,argv,async(s)=>{
+    const {names,flags,machine}=words(argv,{'--text-file':'value','--key':'value','--status':'flag','--check':'flag','--json':'flag'})
+    if(names.length!==1 || machine || (!flags.has('--check') && typeof flags.get('--key')!=='string')) throw new UsageError(usage)
+    const o=await opened(s)
+    try {
+      const t=await target(s,o,names[0])
+      const permitted=!o.orphan && !!o.caller && !t.remote && o.ledger.canFollowup(o.caller,{machineId:t.machineId,agentId:t.frame.id})
+      if(flags.has('--check')) {s.out(JSON.stringify({allowed:permitted && readAgentSettings(o.where.dataDir).agentsStartAgents,target:t.frame.id}));return EXIT.ok}
+      if(!permitted || !o.caller) throw new AgentClientError('NOT_YOURS','Native follow-up control has not been granted for this worker.')
+      const status=flags.has('--status')
+      if(!status && await inspect(t)!=='idle') throw new AgentClientError('WORKING','The worker is busy, has a draft, needs the person or cannot be inspected; nothing was sent.')
+      const path=flags.get('--text-file')
+      if(!status && typeof path!=='string') throw new UsageError(usage)
+      const text=status ? undefined : readFileSync(path==='-'?0:path as string,'utf8')
+      const reply=await t.daemon.request('agent_messages',{action:status?'owned_status':'owned_send',caller:o.caller.agentId,target:t.frame.id,key:flags.get('--key'),...(text!==undefined?{text}:{})},20000)
+      if(reply.error) throw new AgentClientError(String(reply.error),String(reply.detail||reply.error))
+      s.out(flags.has('--json')?JSON.stringify(reply):`Owned follow-up ${String(reply.key)}: ${String(reply.state)}. Native delivery is not task completion.`)
+      return EXIT.ok
+    } finally {o.daemon.close()}
+  })
+}
+
+
+export function delegateFollowupCommand(argv: readonly string[], deps: ClientDeps = {}): Promise<number> {
+  const usage='Usage: harness delegate-followup <name> --controller agent:<name>:<session> [--revoke] [--json]'
+  return run(usage,deps,wantsJson,argv,async(s)=>{
+    const {names,flags,machine}=words(argv,{'--controller':'value','--revoke':'flag','--json':'flag'})
+    if(names.length!==1 || machine || typeof flags.get('--controller')!=='string')throw new UsageError(usage)
+    const o=await opened(s)
+    try {
+      const t=await target(s,o,names[0])
+      if(o.orphan || !o.caller || o.caller.outside || o.caller.agentId!==t.frame.id || t.remote)throw new AgentClientError('NOT_YOURS','Run this only in the harness being connected; it grants follow-ups for itself, never another session.')
+      const reply=await t.daemon.request('agent_messages',{action:'owned_grant',caller:o.caller.agentId,target:t.frame.id,controller:flags.get('--controller'),enabled:!flags.has('--revoke')},20000)
+      if(reply.error)throw new AgentClientError(String(reply.error),String(reply.detail||reply.error))
+      s.out(JSON.stringify(reply));return EXIT.ok
+    } finally{o.daemon.close()}
+  })
+}

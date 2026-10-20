@@ -1,4 +1,4 @@
-import { linkSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync } from 'node:fs'
+import { copyFileSync, linkSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -105,10 +105,10 @@ describe('namedNode', () => {
       const bin = join(dir, 'node-v1', 'bin')
       mkdirSync(bin, { recursive: true })
       const fakeNode = join(bin, 'node')
-      linkSync(process.execPath, fakeNode)
+      copyFileSync(process.execPath, fakeNode)
       const link = namedNode(fakeNode, 'harnessd-search', dir)
       expect(link).toBe(join(dir, 'node-v1', 'libexec', 'harnessd', 'harnessd-search'))
-      expect(statSync(link).ino).toBe(statSync(process.execPath).ino)
+      expect(statSync(link).ino).toBe(statSync(fakeNode).ino)
       expect(namedNode(fakeNode, 'harnessd-search', dir, { fs: nodeFs })).toBe(link)
       expect(baseNode(link)).toBe(fakeNode)
     } finally { rmSync(dir, { recursive: true, force: true }) }

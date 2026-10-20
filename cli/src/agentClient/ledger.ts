@@ -94,10 +94,20 @@ export function parseClosed(line: string): Closed | null {
   return { at: v.at, by: { machineId: by.machineId, agentId: by.agentId }, closed: { machineId: closed.machineId, agentId: closed.agentId } }
 }
 
+export interface FollowupDelegation {
+  kind: 'followup-delegation'; at: number; target: LedgerMember; controller: LedgerMember; enabled: boolean
+}
+const parseDelegation = (line: string): FollowupDelegation | null => {
+  try {
+    const value=JSON.parse(line)
+    return value?.kind==='followup-delegation' && typeof value.at==='number' && member(value.target) && member(value.controller) && typeof value.enabled==='boolean' ? value : null
+  } catch {return null}
+}
+
 const same = (a: LedgerMember, b: LedgerMember): boolean => a.machineId === b.machineId && a.agentId === b.agentId
 
 export class Ledger {
-  private cache: { key: string; rows: Started[]; pending: Pending[]; closed: Closed[] } | null = null
+  private cache: { key: string; rows: Started[]; pending: Pending[]; closed: Closed[]; delegations: FollowupDelegation[] } | null = null
   constructor(readonly path: string) {}
 
   /** Where the older lines went when the file passed its size. */
@@ -107,11 +117,11 @@ export class Ledger {
    *  only when either changed. */
   all(): Started[] { return this.read().rows }
 
-  private read(): { rows: Started[]; pending: Pending[]; closed: Closed[] } {
+  private read(): { rows: Started[]; pending: Pending[]; closed: Closed[]; delegations: FollowupDelegation[] } {
     const files = [this.previous, this.path].map((path) => { try { const st = statSync(path); return { path, key: `${st.mtimeMs}:${st.size}` } } catch { return null } })
     const key = files.map((f) => f?.key ?? '-').join('|')
     if (this.cache?.key === key) return this.cache
-    const rows: Started[] = [], pending: Pending[] = [], closed: Closed[] = []
+    const rows: Started[] = [], pending: Pending[] = [], closed: Closed[] = [], delegations: FollowupDelegation[] = []
     for (const file of files) {
       if (!file) continue
       let text = ''
@@ -123,14 +133,16 @@ export class Ledger {
         const asked = parsePending(line)
         if (asked) { pending.push(asked); continue }
         const close = parseClosed(line)
-        if (close) closed.push(close)
+        if (close) {closed.push(close);continue}
+        const delegation=parseDelegation(line)
+        if(delegation)delegations.push(delegation)
       }
     }
-    this.cache = { key, rows, pending, closed }
+    this.cache = { key, rows, pending, closed, delegations }
     return this.cache
   }
 
-  append(row: Started | Pending | Closed): void {
+  append(row: Started | Pending | Closed | FollowupDelegation): void {
     mkdirSync(dirname(this.path), { recursive: true })
     // One short line with O_APPEND: two agents starting harnesses at once never interleave.
     appendFileSync(this.path, `${JSON.stringify(row)}\n`, { mode: 0o600 })
@@ -148,6 +160,12 @@ export class Ledger {
   /** The line that says who started [m], or null when the person did. */
   parentOf(m: LedgerMember): Started | null {
     return this.all().findLast((row) => same(row.child, m)) ?? null
+  }
+
+  /** Narrow native control grant; it never changes creator, depth, close or spawn ownership. */
+  canFollowup(controller: LedgerMember, target: LedgerMember): boolean {
+    if(same(this.parentOf(target)?.by ?? {machineId:'',agentId:''},controller))return true
+    return this.read().delegations.findLast(r=>same(r.target,target)&&same(r.controller,controller))?.enabled===true
   }
 
   /** The harnesses [m] started, newest last. */
