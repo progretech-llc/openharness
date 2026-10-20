@@ -12,7 +12,7 @@ import { readdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { BackendSocket } from '../../backendSocket.js'
 import type { ModelsPort } from '../api.js'
-import { MODEL_MANAGER_ID } from '../../dsh/builtinIds.js'
+import { HARNESS_MONITOR_ID, MODEL_MANAGER_ID } from '../../dsh/builtinIds.js'
 import { installedDsh } from '../../dsh/installed.js'
 import { harnessEnvToClear, type DshAccount } from '../../dsh/launch.js'
 import { dshPinnedPermissionMode } from '../../dsh/manifest.js'
@@ -95,7 +95,7 @@ export function createAgentCreator({
   prepareApiTools, hookPort, hooksDisabled, installOpencodePlugin, gridLaunchMachine, buildGridLaunch, terminalHintMachineName, blocksFolder,
   gridSetup, privateGridName, dshLaunch,
 }: CreateAgentDeps) {
-  const prepare = async (input: Parameters<CreateAgent>[0], authority: LaunchAuthority, context?: { local: boolean }): Promise<LaunchPreparation<Awaited<ReturnType<CreateAgent>>>> => {
+  const prepareNew = async (input: Parameters<CreateAgent>[0], authority: LaunchAuthority, context?: { local: boolean }): Promise<LaunchPreparation<Awaited<ReturnType<CreateAgent>>>> => {
     if (input.resumeSessionId) return { ok: true, dispatch: () => externalResume(input) }
     const stale = () => ({ ok: false as const, error: 'LAUNCH_AUTHORITY_CHANGED', unavailable: 'launch', detail: 'Waiting for the original launch request’s authority.' })
     if (!authority.current()) return stale()
@@ -396,6 +396,25 @@ export function createAgentCreator({
     void watchNewPane(engine, pending, spawned, command, installIfMissing, undefined)
     console.log(`[agent] create pane open · ${engine} · agent ${pending.agentId}`)
     return { ok: true, session: pending }
+    } }
+  }
+  let monitorLaunch: ReturnType<CreateAgent> | undefined
+  const prepare: typeof prepareNew = async (input, authority, context) => {
+    if (input.dsh !== HARNESS_MONITOR_ID || input.resumeSessionId) return prepareNew(input, authority, context)
+    const stale = () => ({ ok: false as const, error: 'LAUNCH_AUTHORITY_CHANGED' })
+    if (!authority.current()) return stale()
+    const existing = () => registry.list().find(session => session.dsh === HARNESS_MONITOR_ID)
+    const reuse = existing()
+    if (reuse) return { ok: true, dispatch: async () => authority.current() ? { ok: true, session: reuse } : stale() }
+    const prepared = await prepareNew(input, authority, context)
+    if (!prepared.ok) return prepared
+    return { ok: true, dispatch: async () => {
+      if (!authority.current()) return stale()
+      const session = existing()
+      if (session) return { ok: true, session }
+      // Concurrent windows share the launch until its registry row is published.
+      monitorLaunch ??= prepared.dispatch().finally(() => { monitorLaunch = undefined })
+      return monitorLaunch
     } }
   }
   const createAgent: CreateAgent = async input => {

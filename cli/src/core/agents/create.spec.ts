@@ -132,7 +132,7 @@ const owner = { pid: 7, engine: 'claude' } as SessionOwner
 function setup(over: Partial<CreateAgentDeps> = {}) {
   const deps: CreateAgentDeps = {
     tmuxBackend: {} as CreateAgentDeps['tmuxBackend'],
-    registry: { setLaunch: vi.fn(() => ({ ...pending, launch: { state: 'ready' } })) } as unknown as CreateAgentDeps['registry'],
+    registry: { list: vi.fn(() => []), setLaunch: vi.fn(() => ({ ...pending, launch: { state: 'ready' } })) } as unknown as CreateAgentDeps['registry'],
     externalResume: vi.fn<CreateAgentDeps['externalResume']>(async () => ({ ok: true, session: pending })),
     watchNewPane: vi.fn(async () => {}),
     announceSession: vi.fn(),
@@ -449,6 +449,18 @@ describe('creating an agent', () => {
     })
   })
 
+  it('coalesces concurrent monitor dispatches into one pane', async () => {
+    vi.mocked(installedDsh).mockReturnValue(installed() as never)
+    const { create } = setup()
+    const input = request({ dsh: 'autonomous/harness-monitor' })
+    const authority = { id: 'monitor', label: 'monitor', current: () => true, hold: () => {} }
+    const prepared = await Promise.all([create.prepare(input, authority), create.prepare(input, authority)])
+    expect(prepared.every(item => item.ok)).toBe(true)
+    const results = await Promise.all(prepared.map(item => item.ok ? item.dispatch() : item))
+    expect(results).toEqual([{ ok: true, session: pending }, { ok: true, session: pending }])
+    expect(createAndRegisterPane).toHaveBeenCalledTimes(1)
+  })
+
   describe('a pane that opens', () => {
     it('opens a plain session, announces it and watches it until its engine is up', async () => {
       const { deps, create } = setup()
@@ -665,4 +677,12 @@ describe('creating an agent', () => {
 
 
   })
+})
+
+it('reuses the existing monitor without preparing another pane', async () => {
+  const { deps, create } = setup()
+  const monitor = { ...pending, dsh: 'autonomous/harness-monitor' }
+  vi.mocked(deps.registry.list).mockReturnValue([monitor])
+  expect(await create(request({ dsh: monitor.dsh }))).toEqual({ ok: true, session: monitor })
+  expect(deps.prepareApiTools).not.toHaveBeenCalled()
 })

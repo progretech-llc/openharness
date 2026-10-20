@@ -42,7 +42,8 @@ export function mergeRows(agents, { state = {}, machine = null, local = true, no
       : agent.launch?.state === 'failed' ? (agent.launch.error === 'RESUME_UNCONFIRMED' ? 'needsInput' : 'failed')
       : monitor?.activityKnown ? monitor.activity : 'unknown'
     if (!['working', 'needsInput', 'done', 'idle', 'starting', 'failed', 'stopped', 'offline', 'unknown'].includes(activity)) activity = 'idle'
-    const self = agent.dsh === 'autonomous/harness-monitor'
+    const self = agent.dsh === 'autonomous/harness-monitor' &&
+      agent.id === agents.find(other => other.dsh === 'autonomous/harness-monitor' && other.status !== 'stopped')?.id
     const canControl = online && !self && agent.resumeMode != null && agent.launch?.state !== 'starting'
     return {
       id, agentId: agent.id, sessionId: agent.sessionId || null,

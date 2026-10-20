@@ -265,7 +265,8 @@ export class PurgeAgentService {
   private current(request: Pick<PurgeRequest, 'agentId' | 'sessionId' | 'createdAt'>, deletingHistory = true): RegisteredSession {
     const s = this.deps.live(request.agentId) ?? this.deps.stopped.get(request.agentId)
     if (!s || (s.sessionId || null) !== request.sessionId || s.registeredAt !== request.createdAt) return fail('This harness changed. Refresh and review deletion again.')
-    if (s.dsh === 'autonomous/harness-monitor' || s.launch?.state === 'starting') return fail('This harness cannot be deleted from this monitor.')
+    if ((s.dsh === 'autonomous/harness-monitor' && !this.deps.sessions().some(other =>
+      other.agentId !== s.agentId && other.dsh === s.dsh && this.deps.live(other.agentId))) || s.launch?.state === 'starting') return fail('This harness cannot be deleted from this monitor.')
     if (this.deps.restarting(s.agentId)) return fail('Wait for the current harness operation to finish, then try again.')
     if (deletingHistory && s.sessionId && this.deps.sessions().some(other => other.agentId !== s.agentId && other.sessionId === s.sessionId)) {
       return fail('Another harness uses this conversation. Its shared history cannot be deleted here.')

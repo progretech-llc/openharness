@@ -100,3 +100,11 @@ test('token velocity uses fresh ledger updates, survives clock skew, and resets 
   now += 120000; sourceTime += 120000; tokenCount += 1000; assert.equal(await read(), null)
   now += 10000; sourceTime += 10000; tokenCount += 1000; assert.equal(await read(), 6000)
 })
+
+test('duplicate monitors can be cleaned up while one live monitor stays protected', () => {
+  const monitors = mergeRows([agent({ id: 'keep', dsh: 'autonomous/harness-monitor' }),
+    agent({ id: 'duplicate', dsh: 'autonomous/harness-monitor' })], { machine, now })
+  assert.equal(monitors[0].canStop, false)
+  assert.equal(monitors[1].canStop, true)
+  assert.equal(monitors[1].canDelete, true)
+})

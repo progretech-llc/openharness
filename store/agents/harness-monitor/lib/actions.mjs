@@ -17,8 +17,8 @@ async function fresh(row, list) {
   if (!agent) throw new Error('This harness is no longer in the daemon inventory. Refresh and try again.')
   // A stopped/reopened or rotated conversation is a different target from the one the person reviewed.
   if ((agent.sessionId || null) !== (row.sessionId || null) || (row.createdAt != null && Date.parse(agent.createdAt) !== row.createdAt)) throw new Error('This conversation changed. Refresh and review it before acting.')
-  return mergeRows([agent], { machine: { machineId: row.machineId, name: row.machine }, local: row.local,
-    state: { pins: row.pinned ? [row.id] : [] } })[0]
+  return mergeRows(agents, { machine: { machineId: row.machineId, name: row.machine }, local: row.local,
+    state: { pins: row.pinned ? [row.id] : [] } }).find(current => current.agentId === agent.id)
 }
 
 export async function stop(row, { policy = normalizePolicy({}), force = false, list = listAgents, rpc = request } = {}) {

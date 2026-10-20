@@ -264,3 +264,13 @@ describe('shared native databases', () => {
     } finally { db.close() }
   })
 })
+
+it('allows deleting a duplicate monitor while retaining the other live monitor', async () => {
+  session.dsh = 'autonomous/harness-monitor'
+  const keeper = registry.openPendingAgent({ engine: 'codex', cwd: session.cwd, runtimes: [{ backend: 'tmux', paneId: '%78' }] })!
+  keeper.dsh = session.dsh
+  const plan = await review()
+  expect(plan.reviewId).toBeTypeOf('string')
+  expect(await remove(plan.reviewId)).toMatchObject({ deleted: true })
+  expect(registry.byAgent(keeper.agentId)).toBe(keeper)
+})

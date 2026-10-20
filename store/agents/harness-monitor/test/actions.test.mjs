@@ -121,3 +121,14 @@ test('worktree-only deletion forwards explicit choices and exact reviewed path',
   assert.equal((await deleteHarness(selected, { ...options, choices: { sessionData: false, worktreeData: false } })).ok, false)
   assert.equal(calls.length, 1)
 })
+
+test('explicit duplicate monitor cleanup rechecks the full inventory', async () => {
+  const agents = [agent({ id: 'keep', dsh: 'autonomous/harness-monitor' }),
+    agent({ id: 'duplicate', dsh: 'autonomous/harness-monitor' })]
+  const selected = mergeRows(agents, { machine: { machineId: 'remote', name: 'Office' }, local: false })[1]
+  let stopped = false
+  const result = await stop(selected, { force: true, list: async () => agents,
+    rpc: async () => { stopped = true; return { deleted: true } } })
+  assert.equal(result.ok, true)
+  assert.equal(stopped, true)
+})
