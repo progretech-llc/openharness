@@ -25,7 +25,9 @@ function teamHold(engine: AgentEngine, capture: string, pane: PaneInspection, qu
   // These composers permit an empty first line followed by a multiline human draft.
   // The general profile inspector only needs the first line; team delivery needs every line.
   if (['claude', 'codex', 'cursor', 'hermes'].includes(engine)) {
-    const index = lines.findLastIndex(line => /^\s*[›❯→]/u.test(line))
+    // Hermes prefixes its composer with the selected profile (for example, imagen ❯).
+    const prompt = engine === 'hermes' ? /^\s*(?:[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\s+)?[›❯→]/u : /^\s*[›❯→]/u
+    const index = lines.findLastIndex(line => prompt.test(line))
     if (index < 0) return 'team_waiting_idle'
     // Codex shows its styled placeholder only when the whole composer is empty.
     // Its configurable model/cwd/task footer below that placeholder is not draft
