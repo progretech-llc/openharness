@@ -71,12 +71,13 @@ export const MachineRegister = async ({ directory, worktree, project, client }) 
     const token = hookToken()
     if (!pane || !token || !sessionID || seen.has(sessionID)) return
     seen.add(sessionID)
+    const firedAt = Date.now()
     try {
       await fetch("http://127.0.0.1:`,
 { argument: 'port' },
 `/api/hook/session-start", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-harness-hook-token": token },
+        headers: { "content-type": "application/json", "x-harness-hook-token": token, "x-harness-hook-fired-at": String(firedAt) },
         body: JSON.stringify({
           engine: "`,
 "opencode",
@@ -143,6 +144,7 @@ export default {
       const token = hookToken()
       if (!token || !sessionID || posted.has(sessionID) || busy) return
       busy = true
+      const firedAt = Date.now()
       try {
         let info
         try { info = await (ctx.data && ctx.data.session && ctx.data.session.get ? ctx.data.session.get(sessionID) : undefined) } catch {}
@@ -152,7 +154,7 @@ export default {
 { argument: 'port' },
 `/api/hook/session-start", {
           method: "POST",
-          headers: { "content-type": "application/json", "x-harness-hook-token": token },
+          headers: { "content-type": "application/json", "x-harness-hook-token": token, "x-harness-hook-fired-at": String(firedAt) },
           body: JSON.stringify({
             engine: "opencode",
             pluginVersion: `,

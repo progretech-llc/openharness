@@ -14,9 +14,9 @@
   "8f5114f5734c2d24": "{\n  \"version\": 1,\n  \"note\": \"café ✓\",\n  \"hooks\": {\n    \"sessionStart\": [\n      {\n        \"command\": \"foreign-start\"\n      },\n      {\n        \"command\": \"'<node>' '<script>' --port 19473 --data-dir '<root>/data' --claude-projects-dir '<root>/home/.claude/projects' --codex-home '<root>/home/.codex' --grok-home '<root>/home/.grok' --cursor-home '<root>/home/.cursor' --hermes-home '<root>/home/.hermes' --commandcode-home '<root>/home/.commandcode' --devin-home '<root>/home/.local/share/devin/cli' --agy-home '<root>/home/.gemini/antigravity-cli' --copilot-home '<root>/home/.copilot' --engine cursor\",\n        \"failClosed\": false\n      }\n    ],\n    \"afterFileEdit\": [\n      {\n        \"command\": \"foreign-edit\"\n      }\n    ],\n    \"beforeSubmitPrompt\": [\n      {\n        \"command\": \"'<node>' '<script>' --port 19473 --data-dir '<root>/data' --claude-projects-dir '<root>/home/.claude/projects' --codex-home '<root>/home/.codex' --grok-home '<root>/home/.grok' --cursor-home '<root>/home/.cursor' --hermes-home '<root>/home/.hermes' --commandcode-home '<root>/home/.commandcode' --devin-home '<root>/home/.local/share/devin/cli' --agy-home '<root>/home/.gemini/antigravity-cli' --copilot-home '<root>/home/.copilot' --engine cursor\",\n        \"failClosed\": false\n      }\n    ],\n    \"preToolUse\": [\n      {\n        \"command\": \"'<node>' '<script>' --port 19473 --data-dir '<root>/data' --claude-projects-dir '<root>/home/.claude/projects' --codex-home '<root>/home/.codex' --grok-home '<root>/home/.grok' --cursor-home '<root>/home/.cursor' --hermes-home '<root>/home/.hermes' --commandcode-home '<root>/home/.commandcode' --devin-home '<root>/home/.local/share/devin/cli' --agy-home '<root>/home/.gemini/antigravity-cli' --copilot-home '<root>/home/.copilot' --engine cursor\",\n        \"failClosed\": false\n      }\n    ],\n    \"stop\": [\n      {\n        \"command\": \"'<node>' '<script>' --port 19473 --data-dir '<root>/data' --claude-projects-dir '<root>/home/.claude/projects' --codex-home '<root>/home/.codex' --grok-home '<root>/home/.grok' --cursor-home '<root>/home/.cursor' --hermes-home '<root>/home/.hermes' --commandcode-home '<root>/home/.commandcode' --devin-home '<root>/home/.local/share/devin/cli' --agy-home '<root>/home/.gemini/antigravity-cli' --copilot-home '<root>/home/.copilot' --engine cursor\",\n        \"failClosed\": false\n      }\n    ],\n    \"sessionEnd\": [\n      {\n        \"command\": \"'<node>' '<script>' --port 19473 --data-dir '<root>/data' --claude-projects-dir '<root>/home/.claude/projects' --codex-home '<root>/home/.codex' --grok-home '<root>/home/.grok' --cursor-home '<root>/home/.cursor' --hermes-home '<root>/home/.hermes' --commandcode-home '<root>/home/.commandcode' --devin-home '<root>/home/.local/share/devin/cli' --agy-home '<root>/home/.gemini/antigravity-cli' --copilot-home '<root>/home/.copilot' --engine cursor\",\n        \"failClosed\": false\n      }\n    ]\n  }\n}\n",
   "e161f02becaa47e8": "{\"hooks\":{\"sessionStart\":[{\"command\":\"'<node>' '<script>' --port 19473 --data-dir '<root>/data' --claude-projects-dir '<root>/home/.claude/projects' --codex-home '<root>/home/.codex' --grok-home '<root>/home/.grok' --cursor-home '<root>/home/.cursor' --hermes-home '<root>/home/.hermes' --commandcode-home '<root>/home/.commandcode' --devin-home '<root>/home/.local/share/devin/cli' --agy-home '<root>/home/.gemini/antigravity-cli' --copilot-home '<root>/home/.copilot' --engine cursor\",\"failClosed\":false}],\"beforeSubmitPrompt\":[{\"command\":\"'<node>' '<script>' --port 19473 --data-dir '<root>/data' --claude-projects-dir '<root>/home/.claude/projects' --codex-home '<root>/home/.codex' --grok-home '<root>/home/.grok' --cursor-home '<root>/home/.cursor' --hermes-home '<root>/home/.hermes' --commandcode-home '<root>/home/.commandcode' --devin-home '<root>/home/.local/share/devin/cli' --agy-home '<root>/home/.gemini/antigravity-cli' --copilot-home '<root>/home/.copilot' --engine cursor\",\"failClosed\":false}],\"preToolUse\":[{\"command\":\"'<node>' '<script>' --port 19473 --data-dir '<root>/data' --claude-projects-dir '<root>/home/.claude/projects' --codex-home '<root>/home/.codex' --grok-home '<root>/home/.grok' --cursor-home '<root>/home/.cursor' --hermes-home '<root>/home/.hermes' --commandcode-home '<root>/home/.commandcode' --devin-home '<root>/home/.local/share/devin/cli' --agy-home '<root>/home/.gemini/antigravity-cli' --copilot-home '<root>/home/.copilot' --engine cursor\",\"failClosed\":false}],\"stop\":[{\"command\":\"'<node>' '<script>' --port 19473 --data-dir '<root>/data' --claude-projects-dir '<root>/home/.claude/projects' --codex-home '<root>/home/.codex' --grok-home '<root>/home/.grok' --cursor-home '<root>/home/.cursor' --hermes-home '<root>/home/.hermes' --commandcode-home '<root>/home/.commandcode' --devin-home '<root>/home/.local/share/devin/cli' --agy-home '<root>/home/.gemini/antigravity-cli' --copilot-home '<root>/home/.copilot' --engine cursor\",\"failClosed\":false}],\"sessionEnd\":[{\"command\":\"'<node>' '<script>' --port 19473 --data-dir '<root>/data' --claude-projects-dir '<root>/home/.claude/projects' --codex-home '<root>/home/.codex' --grok-home '<root>/home/.grok' --cursor-home '<root>/home/.cursor' --hermes-home '<root>/home/.hermes' --commandcode-home '<root>/home/.commandcode' --devin-home '<root>/home/.local/share/devin/cli' --agy-home '<root>/home/.gemini/antigravity-cli' --copilot-home '<root>/home/.copilot' --engine cursor\",\"failClosed\":false}]},\"version\":1}",
   "d979437596e2baaf": "{\n  \"version\": 1,\n  \"note\": \"café ✓\",\n  \"hooks\": {\n    \"sessionStart\": [\n      {\n        \"command\": \"foreign-start\"\n      }\n    ],\n    \"afterFileEdit\": [\n      {\n        \"command\": \"foreign-edit\"\n      }\n    ]\n  }\n}\n",
-  "2960dac7c17939ba": "// session-register (OpenCode 2 TUI) — auto-installed by the machine adapter. Tells the local machine\n// daemon (127.0.0.1:19473) which session this pane shows, as the 1.x plugin does. No-op if machine isn't running.\nimport { readFileSync } from \"node:fs\"\nconst hookToken = () => { try { return readFileSync(\"<root>/data/hook-credential\", \"utf8\").trim() } catch { return \"\" } }\nexport default {\n  id: \"harness-session-register\",\n  setup(ctx) {\n    const pane = process.env.TMUX_PANE\n    const router = ctx && ctx.ui && ctx.ui.router\n    if (!pane || !router || typeof router.current !== \"function\") return\n    const posted = new Set()\n    let busy = false\n    const post = async (sessionID) => {\n      const token = hookToken()\n      if (!token || !sessionID || posted.has(sessionID) || busy) return\n      busy = true\n      try {\n        let info\n        try { info = await (ctx.data && ctx.data.session && ctx.data.session.get ? ctx.data.session.get(sessionID) : undefined) } catch {}\n        if (info && info.parentID) { posted.add(sessionID); return } // a sub-agent's — shown under its parent's Task card\n        const cwd = (info && info.location && info.location.directory) || (ctx.location && ctx.location.directory) || process.cwd()\n        const res = await fetch(\"http://127.0.0.1:19473/api/hook/session-start\", {\n          method: \"POST\",\n          headers: { \"content-type\": \"application/json\", \"x-harness-hook-token\": token },\n          body: JSON.stringify({\n            engine: \"opencode\",\n            pluginVersion: \"<version>\",\n            sessionId: sessionID,\n            cwd,\n            tmuxPane: pane,\n            callerPid: process.pid,\n            runtimeHints: [{ backend: \"tmux\", paneId: pane }],\n          }),\n        })\n        if (res && res.ok) posted.add(sessionID)\n      } catch {} finally { busy = false }\n    }\n    const check = () => {\n      try { const at = router.current(); if (at && at.type === \"session\" && at.sessionID) post(at.sessionID) } catch {}\n    }\n    check()\n    const timer = setInterval(check, 1000)\n    if (timer && typeof timer.unref === \"function\") timer.unref()\n    return () => clearInterval(timer)\n  },\n}\n",
+  "8e815dfedf4894d4": "// session-register (OpenCode 2 TUI) — auto-installed by the machine adapter. Tells the local machine\n// daemon (127.0.0.1:19473) which session this pane shows, as the 1.x plugin does. No-op if machine isn't running.\nimport { readFileSync } from \"node:fs\"\nconst hookToken = () => { try { return readFileSync(\"<root>/data/hook-credential\", \"utf8\").trim() } catch { return \"\" } }\nexport default {\n  id: \"harness-session-register\",\n  setup(ctx) {\n    const pane = process.env.TMUX_PANE\n    const router = ctx && ctx.ui && ctx.ui.router\n    if (!pane || !router || typeof router.current !== \"function\") return\n    const posted = new Set()\n    let busy = false\n    const post = async (sessionID) => {\n      const token = hookToken()\n      if (!token || !sessionID || posted.has(sessionID) || busy) return\n      busy = true\n      const firedAt = Date.now()\n      try {\n        let info\n        try { info = await (ctx.data && ctx.data.session && ctx.data.session.get ? ctx.data.session.get(sessionID) : undefined) } catch {}\n        if (info && info.parentID) { posted.add(sessionID); return } // a sub-agent's — shown under its parent's Task card\n        const cwd = (info && info.location && info.location.directory) || (ctx.location && ctx.location.directory) || process.cwd()\n        const res = await fetch(\"http://127.0.0.1:19473/api/hook/session-start\", {\n          method: \"POST\",\n          headers: { \"content-type\": \"application/json\", \"x-harness-hook-token\": token, \"x-harness-hook-fired-at\": String(firedAt) },\n          body: JSON.stringify({\n            engine: \"opencode\",\n            pluginVersion: \"<version>\",\n            sessionId: sessionID,\n            cwd,\n            tmuxPane: pane,\n            callerPid: process.pid,\n            runtimeHints: [{ backend: \"tmux\", paneId: pane }],\n          }),\n        })\n        if (res && res.ok) posted.add(sessionID)\n      } catch {} finally { busy = false }\n    }\n    const check = () => {\n      try { const at = router.current(); if (at && at.type === \"session\" && at.sessionID) post(at.sessionID) } catch {}\n    }\n    check()\n    const timer = setInterval(check, 1000)\n    if (timer && typeof timer.unref === \"function\") timer.unref()\n    return () => clearInterval(timer)\n  },\n}\n",
   "3cd1ae59e87ad8ec": "// someone else's plugin\nexport default {}\n",
-  "4f380457d0f46953": "// session-register — auto-installed by the machine adapter. Binds this OpenCode session to the\n// local machine daemon (127.0.0.1:19473) so it can be mirrored to web/device. No-op if machine isn't running.\nimport { readFileSync } from \"node:fs\"\nconst hookToken = () => { try { return readFileSync(\"<root>/data/hook-credential\", \"utf8\").trim() } catch { return \"\" } }\nexport const MachineRegister = async ({ directory, worktree, project, client }) => {\n  const seen = new Set()\n  const post = async (sessionID) => {\n    const pane = process.env.TMUX_PANE\n    const token = hookToken()\n    if (!pane || !token || !sessionID || seen.has(sessionID)) return\n    seen.add(sessionID)\n    try {\n      await fetch(\"http://127.0.0.1:19473/api/hook/session-start\", {\n        method: \"POST\",\n        headers: { \"content-type\": \"application/json\", \"x-harness-hook-token\": token },\n        body: JSON.stringify({\n          engine: \"opencode\",\n          pluginVersion: \"<version>\",\n          sessionId: sessionID,\n          cwd: directory || worktree || (project && project.worktree) || null,\n          tmuxPane: pane,\n          callerPid: process.pid,\n          runtimeHints: [\n            ...(pane ? [{ backend: \"tmux\", paneId: pane }] : []),\n          ],\n        }),\n      })\n    } catch {}\n  }\n  return {\n    event: async ({ event }) => {\n      if (!event) return\n      if (event.type === \"session.created\" || event.type === \"session.updated\") {\n        const p = event.properties || {}\n        const info = p.info || {}\n        if (info.parentID) return // sub-agent child session — shown under its parent's Task card, not a top-level agent\n        await post(info.id || p.sessionID || p.sessionId)\n      }\n    },\n  }\n}\n",
+  "4af9ba4d61138c0b": "// session-register — auto-installed by the machine adapter. Binds this OpenCode session to the\n// local machine daemon (127.0.0.1:19473) so it can be mirrored to web/device. No-op if machine isn't running.\nimport { readFileSync } from \"node:fs\"\nconst hookToken = () => { try { return readFileSync(\"<root>/data/hook-credential\", \"utf8\").trim() } catch { return \"\" } }\nexport const MachineRegister = async ({ directory, worktree, project, client }) => {\n  const seen = new Set()\n  const post = async (sessionID) => {\n    const pane = process.env.TMUX_PANE\n    const token = hookToken()\n    if (!pane || !token || !sessionID || seen.has(sessionID)) return\n    seen.add(sessionID)\n    const firedAt = Date.now()\n    try {\n      await fetch(\"http://127.0.0.1:19473/api/hook/session-start\", {\n        method: \"POST\",\n        headers: { \"content-type\": \"application/json\", \"x-harness-hook-token\": token, \"x-harness-hook-fired-at\": String(firedAt) },\n        body: JSON.stringify({\n          engine: \"opencode\",\n          pluginVersion: \"<version>\",\n          sessionId: sessionID,\n          cwd: directory || worktree || (project && project.worktree) || null,\n          tmuxPane: pane,\n          callerPid: process.pid,\n          runtimeHints: [\n            ...(pane ? [{ backend: \"tmux\", paneId: pane }] : []),\n          ],\n        }),\n      })\n    } catch {}\n  }\n  return {\n    event: async ({ event }) => {\n      if (!event) return\n      if (event.type === \"session.created\" || event.type === \"session.updated\") {\n        const p = event.properties || {}\n        const info = p.info || {}\n        if (info.parentID) return // sub-agent child session — shown under its parent's Task card, not a top-level agent\n        await post(info.id || p.sessionID || p.sessionId)\n      }\n    },\n  }\n}\n",
   "5fcd154262aa3330": "// session-register — auto-installed by the machine adapter. Binds this Kilo session to the\n// local machine daemon (127.0.0.1:19473) so it can be mirrored to web/device. No-op if machine isn't running.\nimport { readFileSync } from \"node:fs\"\nconst hookToken = () => { try { return readFileSync(\"<root>/data/hook-credential\", \"utf8\").trim() } catch { return \"\" } }\nexport const MachineRegister = async ({ directory, worktree, project, client }) => {\n  const seen = new Set()\n  const post = async (sessionID) => {\n    const pane = process.env.TMUX_PANE\n    const token = hookToken()\n    if (!pane || !token || !sessionID || seen.has(sessionID)) return\n    seen.add(sessionID)\n    try {\n      await fetch(\"http://127.0.0.1:19473/api/hook/session-start\", {\n        method: \"POST\",\n        headers: { \"content-type\": \"application/json\", \"x-harness-hook-token\": token },\n        body: JSON.stringify({\n          engine: \"kilo\",\n          pluginVersion: \"<version>\",\n          sessionId: sessionID,\n          cwd: directory || worktree || (project && project.worktree) || null,\n          tmuxPane: pane,\n          callerPid: process.pid,\n          runtimeHints: [\n            ...(pane ? [{ backend: \"tmux\", paneId: pane }] : []),\n          ],\n        }),\n      })\n    } catch {}\n  }\n  return {\n    event: async ({ event }) => {\n      if (!event) return\n      if (event.type === \"session.created\" || event.type === \"session.updated\") {\n        const p = event.properties || {}\n        const info = p.info || {}\n        if (info.parentID) return // sub-agent child session — shown under its parent's Task card, not a top-level agent\n        await post(info.id || p.sessionID || p.sessionId)\n      }\n    },\n  }\n}\n",
   "0544c0d16bc89584": "// session-register — auto-installed by the machine adapter. Binds this Pi session to the local\n// machine daemon (127.0.0.1:19473) so it can be mirrored to web/device. No-op if machine isn't running.\nimport { existsSync, readFileSync } from \"node:fs\";\nimport type { ExtensionAPI } from \"@earendil-works/pi-coding-agent\";\n\nexport default function (pi: ExtensionAPI) {\n  let announced = false;   // posted at least once (the transcript may not exist yet)\n  let registered = false;  // posted with a real, on-disk transcript — nothing left to do\n\n  const register = async (ctx: any) => {\n    const pane = process.env.TMUX_PANE;\n    let token = \"\";\n    try { token = readFileSync(\"<root>/data/hook-credential\", \"utf8\").trim(); } catch {}\n    if (!pane || !token) return;\n    // Pi knows the session file path immediately but only WRITES it once the first assistant message\n    // lands. Sending a path that isn't on disk yet is rejected by the daemon (it validates the file),\n    // so announce without one first and attach the real path on a later turn.\n    const file = ctx?.sessionManager?.getSessionFile?.() ?? null;\n    const ready = !!file && existsSync(file);\n    if (registered || (announced && !ready)) return;\n    const sessionId = ctx?.sessionManager?.getSessionId?.();\n    if (!sessionId) return;\n    try {\n      const res = await fetch(\"http://127.0.0.1:19473/api/hook/session-start\", {\n        method: \"POST\",\n        headers: { \"content-type\": \"application/json\", \"x-harness-hook-token\": token },\n        body: JSON.stringify({\n          engine: \"pi\",\n          pluginVersion: \"<version>\",\n          sessionId,\n          transcriptPath: ready ? file : undefined,\n          cwd: ctx?.cwd ?? undefined,\n          tmuxPane: pane,\n          callerPid: process.pid,\n          runtimeHints: [\n            ...(pane ? [{ backend: \"tmux\", paneId: pane }] : []),\n          ],\n        }),\n      });\n      if (!res.ok) return; // daemon refused (e.g. transcript not readable yet) — retry on the next turn\n      announced = true;\n      if (ready) registered = true;\n    } catch {}\n  };\n\n  // session_start fires before the transcript exists; the turn hooks catch it once it does.\n  pi.on(\"session_start\", async (_event, ctx) => { await register(ctx); });\n  pi.on(\"turn_start\", async (_event, ctx) => { await register(ctx); });\n  pi.on(\"turn_end\", async (_event, ctx) => { await register(ctx); });\n}\n",
   "2351a62515202212": "// someone else's extension\nexport default function () {}\n",
@@ -1037,7 +1037,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1077,7 +1077,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1117,7 +1117,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1157,7 +1157,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1197,7 +1197,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1237,7 +1237,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1277,7 +1277,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1317,7 +1317,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1357,7 +1357,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1397,7 +1397,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1437,7 +1437,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1477,7 +1477,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1517,7 +1517,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1557,7 +1557,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1597,7 +1597,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1636,7 +1636,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1676,7 +1676,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1716,7 +1716,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1756,7 +1756,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     },
     "elsewhere/real": {
      "type": "file",
@@ -1804,7 +1804,7 @@
     "elsewhere/real": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1844,7 +1844,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1884,7 +1884,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1924,7 +1924,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -1963,7 +1963,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "444",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -2003,7 +2003,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -2116,7 +2116,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -2159,7 +2159,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js.<pid>.tmp": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -2199,7 +2199,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "600",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -2238,7 +2238,7 @@
     "home/.config/opencode/plugin/launcher-register.js": {
      "type": "file",
      "mode": "644",
-     "text": "4f380457d0f46953"
+     "text": "4af9ba4d61138c0b"
     },
     "home/.config/opencode/plugins": {
      "type": "dir",
@@ -2251,7 +2251,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -2289,7 +2289,7 @@
     "home/.config/opencode/plugin/launcher-register.js": {
      "type": "file",
      "mode": "644",
-     "text": "4f380457d0f46953"
+     "text": "4af9ba4d61138c0b"
     },
     "home/.config/opencode/plugins": {
      "type": "dir",
@@ -2302,7 +2302,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -2342,7 +2342,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -2387,7 +2387,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -2436,7 +2436,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
@@ -2486,7 +2486,7 @@
     "home/.config/opencode/plugins/launcher-register/tui.js": {
      "type": "file",
      "mode": "644",
-     "text": "2960dac7c17939ba"
+     "text": "8e815dfedf4894d4"
     }
    }
   },
