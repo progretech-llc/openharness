@@ -3,7 +3,7 @@ import { screenFor } from '../screens.js'
 import { inspectCloseActivity } from '../../lib/closeAgentService.js'
 
 const capture = (input: string) => `Done.\n────────────────────────\nimagen ❯ ${input}\n────────────────────────\n`
-const session = { engine: 'hermes' as const, sessionId: 'completed-session', transcriptPath: '/fixture' }
+const session = { engine: 'hermes' as const, sessionId: 'completed-session', transcriptPath: '/fixture', boundAt: 1 }
 
 describe('Hermes profile-prefixed composer', () => {
   it('allows idle control only with an empty composer and completed native turn', () => {
