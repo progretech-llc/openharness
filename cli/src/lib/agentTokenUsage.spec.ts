@@ -35,6 +35,25 @@ describe('owning-machine token cache', () => {
   })
   afterEach(async () => { store.dispose(); await store.settled(); vi.useRealTimers(); await rm(dir, { recursive: true, force: true }) })
 
+  it('exports only fresh confirmed service metadata, separately from usage checkpoints', async () => {
+    const stamp = new Date().toISOString()
+    const row = (v: unknown) => JSON.stringify({ timestamp: stamp, sessionId: 'conversation', ...v as object }) + '\n'
+    await writeFile(target.transcriptPath!, row({ type: 'assistant', message: { content: [
+      { type: 'tool_use', id: 'memory', name: 'mcp__hindsight__hindsight_search_knowledge_pages', input: { query: 'DO-NOT-EXPORT' } },
+    ] } }) + row({ type: 'user', message: { content: [
+      { type: 'tool_result', tool_use_id: 'memory', content: 'DO-NOT-EXPORT-RESULT' },
+    ] } }))
+    await read()
+    const directory = join(dir, 'shared-resource-activity')
+    const files = await readdir(directory)
+    const text = await readFile(join(directory, files[0]), 'utf8')
+    expect(JSON.parse(text)).toEqual({ schema: 1, agent_id: 'harness', engine: 'claude',
+      events: [{ kind: 'memory', service: 'hindsight', at: stamp }] })
+    expect(text).not.toContain('DO-NOT-EXPORT')
+    expect((await stat(join(directory, files[0]))).mode & 0o777).toBe(0o600)
+    expect((await read())?.work).toBeUndefined()
+  })
+
   it('reports unavailable instead of null when a worker is full or disposed', async () => {
     let release!: () => void
     const held = new Promise<void>(done => { release = done })

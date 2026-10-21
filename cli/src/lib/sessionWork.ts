@@ -2,16 +2,20 @@
 import { createHash } from 'node:crypto'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { literalToolCall, literalToolCalls, type ToolOutputSlot } from './literalToolCall.js'
+import { resourceUses, publicResourcePath, validResourceUse, type ResourceUse, type ResourceEvent } from './sharedResourceActivity.js'
 
 export type WorkLocation = { cwd: string; at: string }
 export type WorkPullRequest = { url: string; cwd: string | null; at: string }
 type Operation = { paths: string[]; at: string; order: number; createsPr: boolean;
+  resources?: ResourceUse[];
+  resourceOnly?: boolean;
   children?: Array<{ operation: Operation; output?: ToolOutputSlot }> }
 export type SessionWorkLedger = {
   context: string | null; sequence: number; latest: number; currentOrder: number; failedOrder: number;
   current: WorkLocation[]; locations: WorkLocation[]; pullRequests: WorkPullRequest[];
   pending: Record<string, Operation>; running: Record<string, Operation>; completed: string[];
   uncertain: boolean; truncated: boolean;
+  resources?: ResourceEvent[];
 }
 export type SessionWork = Pick<SessionWorkLedger, 'current' | 'locations' | 'pullRequests' | 'uncertain' | 'truncated'>
 const LIMIT = 128
@@ -33,6 +37,8 @@ export function validSessionWork(value: unknown): value is SessionWorkLedger {
   const operation = (op: Operation, depth = 0): boolean => depth <= 4
     && Array.isArray(op?.paths) && op.paths.length <= LIMIT && op.paths.every(validWorkPath)
     && integer(op.order) && op.order <= Number(r?.sequence) && stamp(op.at) && typeof op.createsPr === 'boolean'
+    && (op.resources === undefined || Array.isArray(op.resources) && op.resources.length <= 32 && op.resources.every(validResourceUse))
+    && (op.resourceOnly === undefined || typeof op.resourceOnly === 'boolean')
     && (op.children === undefined || Array.isArray(op.children) && op.children.length <= 32
       && op.children.every(child => operation(child?.operation, depth + 1) && (child.output === undefined
         || integer(child.output.block) && child.output.block < 32
@@ -47,13 +53,15 @@ export function validSessionWork(value: unknown): value is SessionWorkLedger {
     && Object.entries(operations as Record<string, Operation>).every(([id, op]) => /^[a-f0-9]{64}$/.test(id) && operation(op)))
     && Array.isArray(r.completed) && r.completed.length <= RECEIPTS && r.completed.every(id => /^[a-f0-9]{64}$/.test(id))
     && typeof r.uncertain === 'boolean' && typeof r.truncated === 'boolean'
+    && (r.resources === undefined || Array.isArray(r.resources) && r.resources.length <= LIMIT
+      && r.resources.every(v => validResourceUse(v) && stamp((v as ResourceEvent).at)))
 }
 
 export function sessionWorkSnapshot(state: SessionWorkLedger): SessionWork | null {
   if (!state.sequence && !state.pullRequests.length && !state.locations.length) return null
   // Pending calls are intent, not successful work. Multiple simultaneous calls prevent a claim
   // that the last completed checkout is the unique place the agent is working now.
-  const pending = [...Object.values(state.pending), ...Object.values(state.running)]
+  const pending = [...Object.values(state.pending), ...Object.values(state.running)].filter(op => !op.resourceOnly)
   return { current: state.current.map(v => ({ ...v })), locations: state.locations.map(v => ({ ...v })),
     pullRequests: state.pullRequests.map(v => ({ ...v })),
     uncertain: state.uncertain || pending.length > 0, truncated: state.truncated }
@@ -201,8 +209,26 @@ function prepare(state: SessionWorkLedger, name: string, input: unknown, cwd: st
       ? { at: running.at, order: running.order, paths: [], createsPr: false } : running
   }
   const found = continuation ? null : operation(name, input, cwd)
-  if (found === undefined) return null
-  return { paths: found?.paths ?? [], createsPr: found?.createsPr ?? false, order: order ?? ++state.sequence, at }
+  const resources = resourceUses(tool, args)
+  if (['Bash', 'exec_command', 'shell', 'local_shell', 'unified_exec'].includes(tool)) {
+    const source = args?.cmd ?? args?.command
+    const parsed = typeof source === 'string' ? commands(source) : null
+    // Only a single literal reader: a later command's success cannot certify earlier reads.
+    if (parsed?.length === 1 && parsed[0].words.every(w => w.literal && !['--help', '--version'].includes(w.text) && !w.text.includes('>'))) {
+      const words = parsed[0].words
+      const reader = words[0]?.text
+      const candidates = ['cat', 'head', 'tail'].includes(reader) ? words.slice(1)
+        : reader === 'sed' && words.length >= 3 ? words.slice(-1)
+        : ['python', 'python3'].includes(reader) ? words.slice(1, 2) : []
+      for (const word of candidates) if (word.literal && publicResourcePath(word.text))
+        resources.push({ kind: ['python', 'python3'].includes(reader) ? 'tool' : 'read', path: word.text })
+    }
+  }
+  if (found === undefined && !resources.length) return null
+  return { paths: found?.paths ?? [], createsPr: found?.createsPr ?? false,
+    order: found === undefined ? state.sequence : order ?? ++state.sequence, at,
+    ...(found === undefined ? { resourceOnly: true } : {}),
+    ...(resources.length ? { resources: resources.slice(0, 32) } : {}) }
 }
 
 function begin(state: SessionWorkLedger, id: unknown, name: unknown, input: unknown, cwd: string | null, at: string): void {
@@ -300,6 +326,12 @@ function finishOperation(state: SessionWorkLedger, op: Operation, raw: unknown, 
     if (Object.keys(state.running).length < LIMIT) state.running[running] = op
     else state.truncated = true
   }
+  if (!unsuccessful) for (const use of op.resources ?? []) {
+    const key = JSON.stringify(use)
+    state.resources = [{ ...use, at: op.at }, ...(state.resources ?? []).filter(v =>
+      JSON.stringify(v.kind === 'memory' ? { kind: v.kind, service: v.service } : { kind: v.kind, path: v.path }) !== key)].slice(0, LIMIT)
+  }
+  if (op.resourceOnly) return
   state.latest = Math.max(state.latest, op.order)
   if ((!running && unsuccessful) || !op.paths.length) state.failedOrder = Math.max(state.failedOrder, op.order)
   if (!unsuccessful && op.paths.length && op.order >= state.currentOrder) {

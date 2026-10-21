@@ -2,12 +2,13 @@
  * Frames read a tiny in-memory snapshot; a bounded background queue maintains private checkpoints.
  * JSONL is scanned once, then only appended bytes are read. Nothing walks transcript directories. */
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, open, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { join, dirname } from 'node:path'
 import { env } from '../config/env.js'
 import { sqliteReadAll } from './sqliteRead.js'
 import { emptyOutputLedger, ingestOutput, outputSnapshot, validOutputLedger, type AgentOutputStats, type OutputLedger } from './agentOutputStats.js'
 import { emptySessionWork, ingestSessionWork, sessionWorkSnapshot, validSessionWork, type SessionWork, type SessionWorkLedger } from './sessionWork.js'
+import { publicResourcePath } from './sharedResourceActivity.js'
 
 import { usageTargetKey, type AgentTokenUsage, type AgentUsageTarget as Target } from './agentUsageWire.js'
 export type { AgentTokenUsage } from './agentUsageWire.js'
@@ -281,7 +282,7 @@ export class AgentTokenUsageCache {
     } catch { /* First run, corrupt cache, or removed cache: rebuild from the trusted transcript. */ }
     return empty(key)
   }
-  private async save(key: string, state: Checkpoint): Promise<void> {
+  private async save(key: string, state: Checkpoint, target: Target): Promise<void> {
     const bytes = JSON.stringify(state)
     if (Buffer.byteLength(bytes) > MAX_CACHE_BYTES) throw new Error('Usage checkpoint is too large')
     await mkdir(this.directory, { recursive: true, mode: 0o700 })
@@ -291,6 +292,27 @@ export class AgentTokenUsageCache {
       await writeFile(temporary, bytes, { mode: 0o600, flag: 'wx' })
       await rename(temporary, file)
     } finally { await unlink(temporary).catch(() => {}) }
+    // Optional projection failures must not break native usage/accounting.
+    await this.saveResources(key, state, target).catch(() => {})
+  }
+  private async saveResources(key: string, state: Checkpoint, target: Target): Promise<void> {
+    // Separate public projection: consumers never open usage checkpoints or conversations.
+    const events = []
+    for (const event of state.work.resources ?? []) {
+      if (Date.now() - Date.parse(event.at) > 15 * 60_000 || Date.parse(event.at) > Date.now() + 5000) continue
+      if (event.kind === 'memory') events.push(event)
+      else {
+        const path = await realpath(event.path).catch(() => null)
+        if (path && publicResourcePath(path)) events.push({ ...event, path })
+      }
+    }
+    const directory = join(dirname(this.directory), 'shared-resource-activity')
+    await mkdir(directory, { recursive: true, mode: 0o700 })
+    const projection = join(directory, `${key}.json`), temp = `${projection}.${randomUUID()}.tmp`
+    try {
+      await writeFile(temp, JSON.stringify({ schema: 1, agent_id: target.agentId, engine: target.engine, events }), { mode: 0o600, flag: 'wx' })
+      await rename(temp, projection)
+    } finally { await unlink(temp).catch(() => {}) }
   }
   private async refresh(key: string, entry: Entry): Promise<boolean> {
     let nextFingerprint: string | undefined
@@ -378,7 +400,7 @@ export class AgentTokenUsageCache {
     }
     if (!Number.isSafeInteger(state.total)) return false
     state.updatedAt = new Date(this.now()).toISOString()
-    await this.save(key, state)
+    await this.save(key, state, entry.target)
     entry.fingerprint = nextFingerprint
     this.publish(entry, state)
     return true
