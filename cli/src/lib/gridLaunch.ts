@@ -559,7 +559,7 @@ const GRID_ENGINE_CONTRACTS: Partial<Record<AgentEngine, GridEngineContract>> = 
           envVar: GROK_HOME_VAR,
           files: [{
             name: GROK_CONFIG_FILE,
-            content: grokContextConfig(machine.grokHome) + grokGridConfig(
+            content: grokContextConfig(machine.grokHome, Boolean(override.mcpUrl)) + grokGridConfig(
               override.mcpUrl,
               GRID_KEY_VAR,
               model,
@@ -691,7 +691,7 @@ export function buildGridEngineLaunch(
 }
 
 /** Preserve native tool/skill settings while the Grid owns only inference settings. */
-function grokContextConfig(home: string | undefined): string {
+function grokContextConfig(home: string | undefined, replaceHarness: boolean): string {
   if (!home) return ''
   let text: string
   try { text = readFileSync(join(home, 'config.toml'), 'utf8') }
@@ -702,7 +702,7 @@ function grokContextConfig(home: string | undefined): string {
     if (source[key] !== undefined) context[key] = source[key]
   }
   // The session's Grid bridge replaces only its own server, not memory or company tools.
-  if (context.mcp_servers) delete context.mcp_servers.harness
+  if (replaceHarness && context.mcp_servers) delete context.mcp_servers.harness
   return Object.keys(context).length ? stringifyToml(context) + '\n' : ''
 }
 

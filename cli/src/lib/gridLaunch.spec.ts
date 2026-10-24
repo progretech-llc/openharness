@@ -1013,6 +1013,8 @@ paths = ["/company/skills"]
     expect(config.mcp_servers).toMatchObject({ hindsight: { command: 'node' }, harness: { url: MCP_URL } })
     expect(config.skills).toEqual({ paths: ['/company/skills'] })
     expect(text).not.toContain('do-not-inherit')
+    const ownTools = launchOf('grok', WITH_MODEL, { ...PLAIN_MACHINE, grokHome: home })
+    expect(ownTools.configDir!.files[0]!.content).toContain('https://old.invalid')
     expect(launch.configDir!.links!.map(x => x.name)).toEqual(['sessions', 'hooks', 'skills', 'rules'])
     writeFileSync(join(home, 'config.toml'), 'invalid = [')
     expect(buildGridEngineLaunch('grok', WITH_MODEL, { ...PLAIN_MACHINE, grokHome: home })).toMatchObject({ ok: false, error: 'GRID_CONFIG_INVALID' })
