@@ -7,6 +7,7 @@ import type { CoreApi, TurnDelivery } from '../core/api.js'
 import { fakeCore } from '../testing/fakeCore.js'
 import { backend, swarmRoleFor, hostJournalFile, SuperTabHost } from './host.js'
 import { retainedHarnesses, retentionFile } from './retention.js'
+import { observerSource } from './observers.js'
 
 const roots: string[] = []
 const hosts: SuperTabHost[] = []
@@ -555,7 +556,7 @@ describe('Super Tab waits for the Harness Pro', () => {
       if (offline) throw new Error('Host offline')
       return { status: 200, body: { success: true, data: path.includes('/hosts/') ? rows : [] } }
     })
-    const superTabs = { attention: vi.fn(), cards: vi.fn(), cardRecap: vi.fn() }
+    const superTabs = { attention: vi.fn(), cards: vi.fn(), cardRecap: vi.fn(), shareObservers: vi.fn(), screen: vi.fn(), input: vi.fn() }
     const core = fakeCore({ dataDir: dir, superTabs, account: { backend: call },
       agents: { creationStatus: vi.fn(async creationId => ({ creationId, state: 'created' as const, agentId: 'harness' })), byAgent: vi.fn(() => ({ agentId: 'harness' }) as never), terminalAvailable: vi.fn(() => true) } })
     const open = () => { const host = new SuperTabHost(core, 'machine-1', { log: vi.fn() }); hosts.push(host); return host }
@@ -592,7 +593,7 @@ describe('Super Tab waits for the Harness Pro', () => {
       agent: { id: 'agent', harnessId: 'harness', machineId: 'machine-1' } }]
     const call: CoreApi['account']['backend'] = vi.fn(async (_method, path) => ({ status: 200, body: { success: true, data: path.includes('/hosts/') ? rows : [] } }))
     let here = true, clock = 0
-    const superTabs = { attention: vi.fn(), cards: vi.fn(), cardRecap: vi.fn() }
+    const superTabs = { attention: vi.fn(), cards: vi.fn(), cardRecap: vi.fn(), shareObservers: vi.fn(), screen: vi.fn(), input: vi.fn() }
     const core = fakeCore({ dataDir: dir, superTabs, account: { backend: call },
       agents: { byAgent: vi.fn(() => (here ? { agentId: 'harness' } : undefined) as never), terminalAvailable: vi.fn(() => true) } })
     const host = new SuperTabHost(core, 'machine-1', { log: vi.fn(), now: () => clock }); hosts.push(host)
@@ -908,6 +909,67 @@ it('rechecks authoritative native absence before retrying a lost acknowledgement
   expect(t.lease).toHaveBeenCalledOnce()
   expect(t.remove).toHaveBeenCalledOnce()
   expect(t.close).toHaveBeenLastCalledWith({ agentId: 'harness' })
+})
+
+describe('a Lead\'s terminal requests', () => {
+  it('asks for its agents\' terminal requests with each roster read, and answers a screen read as the agent', async () => {
+    const t = setup()
+    Object.assign(t.core, { superTabs: { attention: vi.fn(), cards: vi.fn(), cardRecap: vi.fn(), shareObservers: vi.fn(), input: vi.fn(),
+      screen: vi.fn(async () => ({ ok: true as const, text: 'Allow? 1. Yes', hold: null })) } })
+    const roster = vi.mocked(t.call).getMockImplementation()!
+    vi.mocked(t.call).mockImplementation(async (method, path, body) => path === '/api/super-tabs/hosts/machine-1/terminal'
+      ? { status: 200, body: { success: true, data: [{ tabId: 'tab', agentId: 'agent', harnessId: 'harness', request: { id: 'r1', kind: 'screen' } }] } }
+      : roster(method, path, body))
+    await t.open().tick()
+    await vi.waitFor(() => expect(t.call).toHaveBeenCalledWith('POST', '/api/super-tabs/tab/commands',
+      { operationId: 'terminal-r1', asAgentId: 'agent', command: { type: 'agent.screenResult', requestId: 'r1', ok: true, text: 'Allow? 1. Yes' } }))
+  })
+})
+
+describe('the members a host lets watch its agents', () => {
+  it('keeps them watching through a 3 s roster read, wakes Share once, and lets a removed member go at once', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'super-tab-host-')); roots.push(dir)
+    const member = { tabId: 'tab', agent: { id: 'agent', harnessId: 'harness', machineId: 'machine-1', name: 'River' },
+      observers: [{ email: 'peer@example.com', userId: 'peer' }] }
+    let rows: unknown[] = [member], clock = 0, answer: (() => void) | null = null
+    const call: CoreApi['account']['backend'] = vi.fn(async (_method, path) => {
+      // The roster read takes 3 s when asked to (seen up to 2.8 s, 2026-10-23); everything else answers at once.
+      if (path.includes('/hosts/') && answer === null) await new Promise<void>(resolve => { answer = resolve })
+      return { status: 200, body: { success: true, data: path.includes('/hosts/') ? rows : [] } }
+    })
+    const superTabs = { attention: vi.fn(), cards: vi.fn(), cardRecap: vi.fn(), shareObservers: vi.fn(), screen: vi.fn(), input: vi.fn() }
+    const core = fakeCore({ dataDir: dir, superTabs, account: { backend: call },
+      agents: { byAgent: vi.fn(() => ({ agentId: 'harness' }) as never), terminalAvailable: vi.fn(() => true) } })
+    const host = new SuperTabHost(core, 'machine-1', { log: vi.fn(), now: () => clock }); hosts.push(host)
+    const source = observerSource(dir, () => 'machine-1', () => clock)
+    const peer = { tab: 'super:tab', agentId: 'harness', recipientEmail: 'peer@example.com' } as never
+    const read = async () => { const reading = host.tick(); await vi.waitFor(() => expect(answer).not.toBeNull()); answer!(); await reading; answer = null }
+    await read()
+    expect(source.allows(peer)).toBe(true)
+    // The next read is asked a second later and answers 3 s after that: the roster in force never lapses meanwhile.
+    for (let i = 0; i < 4; i++) {
+      clock += 1_000
+      const reading = host.tick()
+      await vi.waitFor(() => expect(answer).not.toBeNull())
+      clock += 3_000
+      expect(source.allows(peer)).toBe(true)
+      expect(source.known()).toHaveLength(1)
+      answer!(); await reading; answer = null
+    }
+    expect(superTabs.shareObservers).toHaveBeenCalledOnce()
+    // Removed from the Swarm: the very next answer takes the view away and tells Share everyone left.
+    rows = []
+    clock += 1_000; await read(); clock += 201
+    expect(source.allows(peer)).toBe(false)
+    expect(source.known()).toEqual([])
+    // A host that stops publishes nobody, in force: Share withdraws the invitations rather than keeping them.
+    rows = [member]
+    clock += 1_000; await read(); clock += 201
+    expect(source.known()).toHaveLength(1)
+    host.stop(); clock += 201
+    expect(source.known()).toEqual([])
+    expect(superTabs.shareObservers).toHaveBeenCalledOnce()
+  })
 })
 
 describe('adding the machine its own Lead runs on to the Swarm', () => {
