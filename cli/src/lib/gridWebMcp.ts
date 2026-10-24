@@ -376,7 +376,7 @@ export const GROK_CONFIG_FILE = 'config.toml'
  * `XAI_API_KEY`, so borrowing the user's xAI credential would hand a grid agent a login it was
  * deliberately not given.
  */
-export const GROK_GRID_HOME_LINKS: readonly string[] = ['sessions']
+export const GROK_GRID_HOME_LINKS: readonly string[] = ['sessions', 'hooks', 'skills', 'rules']
 
 /**
  * Grok's user-scope config: the grid model, and — when there are any — the grid's web tools.

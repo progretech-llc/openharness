@@ -43,6 +43,8 @@
  */
 
 import { homedir } from 'node:os'
+import { readFileSync } from 'node:fs'
+import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { join } from 'node:path'
 import type { AgentEngine } from '../engines/types.js'
 import { isOpencodeV2 } from '../engines/opencode/contract.js'
@@ -557,7 +559,7 @@ const GRID_ENGINE_CONTRACTS: Partial<Record<AgentEngine, GridEngineContract>> = 
           envVar: GROK_HOME_VAR,
           files: [{
             name: GROK_CONFIG_FILE,
-            content: grokGridConfig(
+            content: grokContextConfig(machine.grokHome) + grokGridConfig(
               override.mcpUrl,
               GRID_KEY_VAR,
               model,
@@ -684,7 +686,24 @@ export function buildGridEngineLaunch(
         + `Pick one for ${override.networkName} and try again.`,
     }
   }
-  return { ok: true, launch: contract.build(override, machine) }
+  try { return { ok: true, launch: contract.build(override, machine) } }
+  catch { return { ok: false, error: 'GRID_CONFIG_INVALID', detail: 'Could not read native client context configuration; repair it before launching on Grid.' } }
+}
+
+/** Preserve native tool/skill settings while the Grid owns only inference settings. */
+function grokContextConfig(home: string | undefined): string {
+  if (!home) return ''
+  let text: string
+  try { text = readFileSync(join(home, 'config.toml'), 'utf8') }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''; throw error }
+  const source = parseToml(text)
+  const context: Record<string, any> = {}
+  for (const key of ['mcp_servers', 'skills', 'paths', 'compat']) {
+    if (source[key] !== undefined) context[key] = source[key]
+  }
+  // The session's Grid bridge replaces only its own server, not memory or company tools.
+  if (context.mcp_servers) delete context.mcp_servers.harness
+  return Object.keys(context).length ? stringifyToml(context) + '\n' : ''
 }
 
 /** A placeholder override, used only to ask a contract which variables it sets. Never launched. */

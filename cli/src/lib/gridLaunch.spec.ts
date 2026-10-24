@@ -1,3 +1,7 @@
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { parse as parseToml } from 'smol-toml'
 import { describe, expect, it, vi } from 'vitest'
 import {
   anthropicBaseUrl,
@@ -988,4 +992,29 @@ describe('each engine is told the real context window', () => {
     expect(piProviderOf(launchOf('pi', WITH_WINDOW)).provider.models[0].contextWindow).toBe(131072)
     expect(piProviderOf(launchOf('pi', WITH_MODEL)).provider.models[0].contextWindow).toBe(200000)
   })
+})
+
+it('preserves Grok native context without inheriting its inference login', () => {
+  const home = mkdtempSync(join(tmpdir(), 'grok-context-'))
+  try {
+    writeFileSync(join(home, 'config.toml'), `[model.old]
+api_key = "do-not-inherit"
+[mcp_servers.hindsight]
+command = "node"
+args = ["memory.js"]
+[mcp_servers.harness]
+url = "https://old.invalid"
+[skills]
+paths = ["/company/skills"]
+`)
+    const launch = launchOf('grok', WITH_MCP, { ...PLAIN_MACHINE, grokHome: home })
+    const text = launch.configDir!.files[0]!.content
+    const config = parseToml(text)
+    expect(config.mcp_servers).toMatchObject({ hindsight: { command: 'node' }, harness: { url: MCP_URL } })
+    expect(config.skills).toEqual({ paths: ['/company/skills'] })
+    expect(text).not.toContain('do-not-inherit')
+    expect(launch.configDir!.links!.map(x => x.name)).toEqual(['sessions', 'hooks', 'skills', 'rules'])
+    writeFileSync(join(home, 'config.toml'), 'invalid = [')
+    expect(buildGridEngineLaunch('grok', WITH_MODEL, { ...PLAIN_MACHINE, grokHome: home })).toMatchObject({ ok: false, error: 'GRID_CONFIG_INVALID' })
+  } finally { rmSync(home, { recursive: true, force: true }) }
 })
