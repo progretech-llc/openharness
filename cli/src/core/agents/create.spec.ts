@@ -765,6 +765,14 @@ describe('creating an agent', () => {
       expect(deps.watchNewPane).toHaveBeenCalledWith('claude', pending, expect.anything(), ['claude'], undefined, undefined)
     })
 
+    it('disables native Grok subagents only for delegated workers', async () => {
+      const { create } = setup()
+      await create(request({ engine: 'grok', startedBy: 'agent' }))
+      expect(vi.mocked(buildEngineLaunchArgv).mock.calls[0][1]?.extraArgs).toContain('--no-subagents')
+      await create(request({ engine: 'grok' }))
+      expect(vi.mocked(buildEngineLaunchArgv).mock.calls[1][1]?.extraArgs ?? []).not.toContain('--no-subagents')
+    })
+
     it('started by another agent: its pull request line after every other argument, and who started it on the row', async () => {
       const { create } = setup()
       const cwd = folder()
