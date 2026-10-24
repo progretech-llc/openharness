@@ -251,14 +251,14 @@ describe('shared native databases', () => {
     const db = dbFixture()
     try {
       db.exec("CREATE TABLE extra(session_id TEXT REFERENCES sessions(id)); CREATE TRIGGER keep_history AFTER DELETE ON sessions BEGIN SELECT 1; END; DELETE FROM messages WHERE session_id='selected-session'; DELETE FROM sessions WHERE id='selected-session';")
-      const before = db.prepare('SELECT total_changes() AS n').get()
+      const before = db.prepare('SELECT total_changes() AS n').all()
       stopped.save(session); registry.removeAgent(session.agentId)
       const plan = await review()
       expect(plan).toMatchObject({ sessionBytes: 0, workspaceKept: true })
       expect(await remove(plan.reviewId)).toMatchObject({ deleted: true, sessionDeleted: true, freedBytes: 0 })
       expect(stopped.get(session.agentId)).toBeNull()
       expect(db.prepare('SELECT id FROM sessions').all()).toEqual([{ id: 'keep' }])
-      expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(before)
+      expect(db.prepare('SELECT total_changes() AS n').all()).toEqual(before)
       expect(existsSync(join(session.cwd!, 'project.txt'))).toBe(true)
     } finally { db.close() }
   })
