@@ -58,6 +58,10 @@ static EXT_RAM_BSS_ATTR pod_roster_row_t s_rows[POD_AGENTS_MAX];   // not on the
 static EXT_RAM_BSS_ATTR struct { char id[ID_MAX], machine_id[ID_MAX]; } s_info[POD_AGENTS_MAX];   // the roster's machine ids
 static EXT_RAM_BSS_ATTR char s_busy[POD_AGENTS_MAX][ID_MAX];       // agents in a live turn ("" = free slot)
 static EXT_RAM_BSS_ATTR char s_quest[POD_AGENTS_MAX][ID_MAX];      // agents with an open question
+// Agents whose open question already woke the glass, and a hash of its prompt. A link drop does not clear it: the daemon
+// re-sends the open question after the relink and that must not beep again. A close (answered, withdrawn) clears it.
+static EXT_RAM_BSS_ATTR char s_alerted[POD_AGENTS_MAX][ID_MAX];
+static uint32_t s_alerted_h[POD_AGENTS_MAX];
 static EXT_RAM_BSS_ATTR cable_machine_t s_mach[CABLE_MAX_MACHINES];
 static int s_mach_n;
 
@@ -67,7 +71,10 @@ static bool s_started, s_linked, s_dirty;
 
 static pod_out_t s_fxq[FX_MAX];
 static int s_fxn;
-static bool s_beepq;   // a new notification landed: beep once after the lock is released
+static bool s_beepq;   // an alert landed and the last beep is old enough: beep once after the lock is released
+static bool s_wakeq;   // an alert landed: light a dark glass after the lock is released
+static bool s_beep_set;
+static uint32_t s_beep_ms;   // when the last beep was queued (POD_BEEP_COALESCE_MS)
 
 // The library sweep's request state. The walk itself is the glue's (pod_ui_sweep_*).
 static int s_sweep_offset;        // the offset the running sweep asks for next
@@ -120,6 +127,20 @@ static void voice_begin_effect(const char *agent);
 static void voice_end_effect(void);
 static void send_library(uint32_t request, int offset);
 
+// An alert for someone else's screen (the caller holds the lock): wake the glass, and beep unless one was queued in the last
+// POD_BEEP_COALESCE_MS. Quiet over the update: the Inbox has it.
+static void alert_locked(void)
+{
+    if (pod_ui_updating(&s_pod)) return;
+    s_wakeq = true;
+    const uint32_t now = ms();
+    if (!s_beep_set || (int32_t)(now - s_beep_ms) >= POD_BEEP_COALESCE_MS) {
+        s_beep_set = true;
+        s_beep_ms = now;
+        s_beepq = true;
+    }
+}
+
 static void perform(const pod_out_t *o)
 {
     switch (o->fx) {
@@ -133,6 +154,25 @@ static void perform(const pod_out_t *o)
     }
 }
 
+// The Swarm cards' select / open / recap.get frames the Lead view owes the daemon (pod_ui_take_supertab reconciles them with what is on screen). Taken under the
+// lock, sent after it. Its own frame: the queue is too big for leave()'s (1 KB cap).
+static __attribute__((noinline)) void send_supertabs(void)
+{
+    pod_supertab_out_t q[POD_SUPERTAB_OUT_MAX];
+    pro_app_lock();
+    const uint32_t rev = s_pod.model.revision;
+    const int n = pod_ui_take_supertab(&s_pod, q, POD_SUPERTAB_OUT_MAX);
+    if (s_pod.model.revision != rev) change();   // asking for a recap puts it LOADING: a change no feed announced (the flag is the model's revision: not consumed here)
+    pro_app_unlock();
+    bool lost[POD_SUPERTAB_OUT_MAX] = {0};
+    bool any = false;
+    for (int i = 0; i < n; i++) any |= lost[i] = !pro_cable_supertab_send(q[i].t, q[i].tab, q[i].lead);
+    if (!any) return;
+    pro_app_lock();   // a frame the link dropped is owed again (open / recap.get are retried)
+    for (int i = 0; i < n; i++) if (lost[i]) pod_ui_supertab_unsent(&s_pod, q[i].t);
+    pro_app_unlock();
+}
+
 // Release the lock, then do what the feeds asked for. Every entry that took the lock ends here.
 static void leave(void)
 {
@@ -144,17 +184,16 @@ static void leave(void)
     const int lib_offset = s_libq.offset;
     const uint32_t lib_request = s_libq.request;
     s_libq.on = false;
-    const bool beep = s_beepq;
-    s_beepq = false;
+    const bool beep = s_beepq, wake = s_wakeq;
+    s_beepq = s_wakeq = false;
     pod_read_out_t reads[POD_READS_MAX];
     const int read_n = pod_ui_take_reads(&s_pod, reads, POD_READS_MAX);   // entries read on the Pod: tell the host
     pro_app_unlock();
     for (int i = 0; i < n; i++) perform(&q[i]);
     for (int i = 0; i < read_n; i++) pro_cable_send_notif_read(reads[i].agent, reads[i].token);
-    if (beep) {   // a new notification: light a dark glass so its banner is seen, and chime unless muted
-        pro_app_wake();
-        if (!pro_settings_muted() && !atomic_load(&s_updating)) audio_beep();
-    }
+    send_supertabs();
+    if (wake) pro_app_wake();   // an alert: light a dark glass so its banner is seen
+    if (beep && !pro_settings_muted() && !atomic_load(&s_updating)) audio_beep();   // and chime, unless muted
     if (lib) send_library(lib_request, lib_offset);
 }
 
@@ -333,6 +372,36 @@ void pro_app_swarms(const cable_swarm_t *items, int n, const cable_swarm_members
     leave();
 }
 
+// The Swarm cards. The model copies the list and keeps the Lead recap texts (pod_model_supertab); a recap lands on its Lead.
+// supertab.focus is recorded by the model (focus_*) and acted on by the glue after the feed (apply_lead_focus): the Lead view opens.
+void pro_app_supertab_ids(const char (*ids)[ID_MAX], int n)
+{
+    pro_app_lock();
+    settle(pod_ui_supertab_ids(&s_pod, ids, n));
+    leave();
+}
+
+void pro_app_supertab(const pod_swarm_t *sw)
+{
+    pro_app_lock();
+    settle(pod_ui_supertab(&s_pod, sw, ms()));
+    leave();
+}
+
+void pro_app_supertab_recap(const char *tab, const char *lead, const char *text, uint32_t at, bool none)
+{
+    pro_app_lock();
+    settle(pod_ui_supertab_recap(&s_pod, tab, lead, text, at, none));
+    leave();
+}
+
+void pro_app_supertab_focus(const char *tab, const char *lead)
+{
+    pro_app_lock();
+    settle(pod_ui_supertab_focus(&s_pod, tab, lead, ms()));
+    leave();
+}
+
 _Static_assert(sizeof(pro_library_row_t) == sizeof(pod_library_row_t) &&
                offsetof(pro_library_row_t, id) == offsetof(pod_library_row_t, id) &&
                offsetof(pro_library_row_t, name) == offsetof(pod_library_row_t, name) &&
@@ -428,7 +497,9 @@ static void turn_locked(const char *id, const char *kind, const char *text, int 
         // R1: only a NEW turn starts the clock; a heartbeat refreshes the word it carries.
         const bool new_turn = set_find(s_busy, id) < 0;
         if (!set_add(s_busy, id)) return;
-        set_remove(s_quest, id);   // only turn.started or question.close ends a question
+        // Only turn.started or question.close ends a question; a Super Tab's survives the turn (pod_model set_state).
+        const pod_agent_t *asked = pod_model_find(&s_pod.model, id);
+        if (!(asked && asked->state == POD_ASKING && asked->super_tab[0])) set_remove(s_quest, id);
         if (new_turn) settle(pod_ui_turn(&s_pod, id, "started", "", 0, now));
         feed_verb(id, text, now);
     } else if (!strcmp(kind, "verb")) {
@@ -450,6 +521,10 @@ static void turn_locked(const char *id, const char *kind, const char *text, int 
     } else if (!strcmp(kind, "done") || !strcmp(kind, "error")) {
         set_remove(s_busy, id);
         settle(pod_ui_turn(&s_pod, id, kind, "", 0, now));
+        if (!strcmp(kind, "error")) {   // a failure is always an alert, whatever the daemon's tiers say
+            if (pod_ui_notify_text(&s_pod, id, POD_TIER_ALERT, text && text[0] ? text : "The turn failed", false, !pro_app_asleep(), now)) alert_locked();
+            change();
+        }
     }
 }
 
@@ -469,7 +544,7 @@ void pro_app_turn_stats(const char *id, int tests_passed, int tests_failed, int 
     leave();
 }
 
-void pro_app_summary(const char *id, const char *text, const char *recap, const char *full, bool restore, bool notify)
+void pro_app_summary(const char *id, const char *text, const char *recap, const char *full, bool restore, pod_tier_t tier)
 {
     if (!id_ok(id)) return;
     pro_app_lock();
@@ -482,8 +557,8 @@ void pro_app_summary(const char *id, const char *text, const char *recap, const 
         const bool has_text = text && text[0] && strcmp(text, "done");
         if ((recap && recap[0]) || has_text) settle(pod_ui_recap(&s_pod, id, recap && recap[0] ? recap : text, restore));
         if (full && full[0]) settle(pod_ui_recap(&s_pod, id, full, restore));   // the long recap wins last (R6)
-        if (notify && !restore && pod_ui_notify(&s_pod, id, !pro_app_asleep(), now)) {   // news: an unread entry, the banner, one beep
-            s_beepq = !pod_ui_updating(&s_pod);   // quiet over the update: the Inbox has it
+        if (!restore && tier != POD_TIER_SILENT) {   // news: an entry; an alert also toasts, wakes and beeps
+            if (pod_ui_notify(&s_pod, id, tier, !pro_app_asleep(), now)) alert_locked();
             change();
         }
     }
@@ -511,11 +586,24 @@ void pro_app_notif_seen(const char *id, const char *token)
     leave();
 }
 
-void pro_app_question(const char *id, const char *text)
+void pro_app_question(const char *id, const char *request, const char *text, const char *super_tab, pod_attention_t attention)
 {
     if (!id_ok(id)) return;
     pro_app_lock();
-    if (s_linked && held(id) && set_add(s_quest, id)) settle(pod_ui_question(&s_pod, id, text && text[0] ? text : "Needs your answer"));
+    if (s_linked && held(id) && set_add(s_quest, id)) {
+        const char *q = text && text[0] ? text : "Needs your answer";
+        settle(pod_ui_question(&s_pod, id, q, super_tab, attention));
+        uint32_t h = 2166136261u;   // FNV-1a of the request id and the prompt: a lost close must not mute the next one
+        for (const char *c = request ? request : ""; *c; c++) h = (h ^ (uint8_t)*c) * 16777619u;
+        h = (h ^ 0u) * 16777619u;
+        for (const char *c = q; *c; c++) h = (h ^ (uint8_t)*c) * 16777619u;
+        int a = set_find(s_alerted, id);
+        const bool again = a >= 0 && s_alerted_h[a] == h;   // filed already, re-sent after a relink: no second beep
+        if (!again && set_add(s_alerted, id)) { a = set_find(s_alerted, id); s_alerted_h[a] = h; }
+        // A question is an alert; filed again after a relink it is the same one, and only the row returns.
+        if (pod_ui_notify_text(&s_pod, id, POD_TIER_ALERT, q, true, !pro_app_asleep(), ms()) && !again) alert_locked();
+        change();
+    }
     leave();
 }
 
@@ -524,6 +612,7 @@ void pro_app_question_close(const char *id)
     if (!id_ok(id)) return;
     pro_app_lock();
     set_remove(s_quest, id);
+    set_remove(s_alerted, id);
     settle(pod_ui_question_close(&s_pod, id));
     leave();
 }
@@ -585,7 +674,8 @@ const char *pro_app_voice_block_reason(const char *agent_id)
         if (!strcmp(pa->engine, "terminal")) why = "Choose an agent pane.";
         else if (mach && !strcmp(mach->state, "offline")) why = "This computer is offline.";
         else if (mach && !strcmp(mach->state, "needs-link")) why = "Link this computer in Harness.";
-        else if (set_find(s_quest, agent_id) >= 0) why = "Answer its question first.";
+        // A Super Tab wait is not answered here: talking to the agent is how a person unblocks it.
+        else if (set_find(s_quest, agent_id) >= 0 && !pa->super_tab[0]) why = "Answer its question first.";
     }
     pro_app_unlock();
     return why;   // a literal, valid after the unlock
@@ -1037,11 +1127,12 @@ void pro_app_test_reset(void)
     memset(s_info, 0, sizeof s_info);
     memset(s_busy, 0, sizeof s_busy);
     memset(s_quest, 0, sizeof s_quest);
+    memset(s_alerted, 0, sizeof s_alerted);
     s_mach_n = 0;
     s_linked = false;
     s_dirty = true;
     s_fxn = 0;
-    s_beepq = false;
+    s_beepq = s_wakeq = s_beep_set = false;
     s_sqn = 0;
     s_libq.on = false;
     s_sweep_offset = 0;

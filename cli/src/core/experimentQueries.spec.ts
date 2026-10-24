@@ -26,6 +26,38 @@ describe('the cloud agents\' doors', () => {
   })
 })
 
+describe('the Super Tab service\'s door', () => {
+  it('is the Super Tab service\'s alone, and hands its members\' waits to the core whole', async () => {
+    const superTabs = { attention: vi.fn(), cards: vi.fn(), cardRecap: vi.fn() }
+    const core = fakeCore({ superTabs })
+    const both = new Set(['orchestrator', 'superTabs'])
+    const item = { agentId: 'a1', requestId: 'supertab:x:blocked', superTab: 'Pilot', attention: 'stuck', text: 'Stuck: no key' }
+    expect(await answerExperimentQuery(core, both, 'superTabs', 'super_tab_attention', { items: [item] })).toEqual({})
+    expect(superTabs.attention).toHaveBeenLastCalledWith([item])
+    await answerExperimentQuery(core, both, 'superTabs', 'super_tab_attention', { items: 'x' })
+    expect(superTabs.attention).toHaveBeenLastCalledWith([])
+    expect(await answerExperimentQuery(core, both, 'orchestrator', 'super_tab_attention', {})).toEqual({ error: 'NOT_SUPER_TABS' })
+    expect(await answerExperimentQuery(fakeCore(), both, 'superTabs', 'super_tab_attention', {})).toEqual({ error: 'NOT_SUPER_TABS' })
+  })
+
+  it('hands it the Swarm cards and a Lead\'s recap the same way, to the Super Tab service alone', async () => {
+    const superTabs = { attention: vi.fn(), cards: vi.fn(), cardRecap: vi.fn() }
+    const core = fakeCore({ superTabs })
+    const both = new Set(['orchestrator', 'superTabs'])
+    const recap = { tabId: 't1', leadId: 'l1', text: 'Shipped', at: 1, none: false }
+    expect(await answerExperimentQuery(core, both, 'superTabs', 'super_tab_cards', { items: [{ id: 't1' }] })).toEqual({})
+    expect(superTabs.cards).toHaveBeenLastCalledWith([{ id: 't1' }])
+    await answerExperimentQuery(core, both, 'superTabs', 'super_tab_cards', { items: 'x' })
+    expect(superTabs.cards).toHaveBeenLastCalledWith([])
+    expect(await answerExperimentQuery(core, both, 'superTabs', 'super_tab_card_recap', { recap })).toEqual({})
+    expect(superTabs.cardRecap).toHaveBeenLastCalledWith(recap)
+    for (const query of ['super_tab_cards', 'super_tab_card_recap']) {
+      expect(await answerExperimentQuery(core, both, 'orchestrator', query, {})).toEqual({ error: 'NOT_SUPER_TABS' })
+      expect(await answerExperimentQuery(fakeCore(), both, 'superTabs', query, {})).toEqual({ error: 'NOT_SUPER_TABS' })
+    }
+  })
+})
+
 describe('what an experiment in its own process may ask of the core', () => {
   it('reads exact creation observations without treating an unavailable provider as an absent launch', async () => {
     const id = 'creation-fixture-1234'
@@ -34,17 +66,17 @@ describe('what an experiment in its own process may ask of the core', () => {
     expect(await answerExperimentQuery(core, experiments, 'orchestrator', 'creation_status', { creationId: id })).toEqual({ observation: known })
     expect(await answerExperimentQuery(fakeCore(), experiments, 'orchestrator', 'creation_status', {})).toEqual({ observation: null })
     expect(await creationForExperiment(null, id)).toBeNull()
-    const read = vi.fn(async (input, reply) => { reply({ ...input, state: 'created', agent: { id: 'native', private: 'not projected' } }) })
+    const read = vi.fn(async (input, _asker, reply) => { reply({ ...input, state: 'created', agent: { id: 'native', private: 'not projected' } }) })
     expect(await creationForExperiment(read, 'invalid')).toBeNull()
     expect(read).not.toHaveBeenCalled()
     expect(await creationForExperiment(read, id)).toEqual({ creationId: id, state: 'created', agentId: 'native' })
     expect(await creationForExperiment(async () => {}, id)).toBeNull()
     expect(await creationForExperiment(async () => { throw new Error('Disk unavailable') }, id)).toBeNull()
-    expect(await creationForExperiment(async (input, reply) => { reply({ ...input, state: 'cancelled' }) }, id)).toEqual(known)
-    expect(await creationForExperiment(async (_, reply) => { reply({ creationId: 'other', state: 'cancelled' }) }, id)).toBeNull()
-    expect(await creationForExperiment(async (input, reply) => { reply({ ...input, state: 'unavailable', createdAgentId: 'closed-native' }) }, id))
+    expect(await creationForExperiment(async (input, _asker, reply) => { reply({ ...input, state: 'cancelled' }) }, id)).toEqual(known)
+    expect(await creationForExperiment(async (_, _asker, reply) => { reply({ creationId: 'other', state: 'cancelled' }) }, id)).toBeNull()
+    expect(await creationForExperiment(async (input, _asker, reply) => { reply({ ...input, state: 'unavailable', createdAgentId: 'closed-native' }) }, id))
       .toEqual({ creationId: id, state: 'created', agentId: 'closed-native' })
-    expect(await creationForExperiment(async (input, reply) => { reply({ ...input, state: 'unavailable' }) }, id)).toBeNull()
+    expect(await creationForExperiment(async (input, _asker, reply) => { reply({ ...input, state: 'unavailable' }) }, id)).toBeNull()
   })
   it('requires fresh native stop evidence, including when a core is older', async () => {
     const core = fakeCore({ agents: { stopped: async id => id === 'stopped' } })
@@ -52,6 +84,14 @@ describe('what an experiment in its own process may ask of the core', () => {
     expect(await answerExperimentQuery(core, experiments, 'orchestrator', 'stopped', { agentId: 'live' })).toEqual({ stopped: false })
     expect(await answerExperimentQuery(core, experiments, 'orchestrator', 'stopped', {})).toEqual({ stopped: false })
     expect(await answerExperimentQuery(fakeCore(), experiments, 'orchestrator', 'stopped', { agentId: 'unknown' })).toEqual({ stopped: false })
+  })
+
+  it('says an agent is gone only on fresh evidence, and not for a core that cannot tell', async () => {
+    const core = fakeCore({ agents: { gone: async id => id === 'closed' } })
+    expect(await answerExperimentQuery(core, experiments, 'orchestrator', 'gone', { agentId: 'closed' })).toEqual({ gone: true })
+    expect(await answerExperimentQuery(core, experiments, 'orchestrator', 'gone', { agentId: 'live' })).toEqual({ gone: false })
+    expect(await answerExperimentQuery(core, experiments, 'orchestrator', 'gone', {})).toEqual({ gone: false })
+    expect(await answerExperimentQuery(fakeCore(), experiments, 'orchestrator', 'gone', { agentId: 'closed' })).toEqual({ gone: false })
   })
 
   it('bounds native observation queries and keeps an older core unavailable', async () => {
@@ -186,4 +226,19 @@ describe('what an experiment in its own process may ask of the core', () => {
     expect(await createForExperiment(create as never, request)).toEqual({ ok: false, error: 'ENGINE_MISSING' })
     expect(await createForExperiment(null, request)).toEqual({ ok: false, error: 'UNSUPPORTED', detail: 'This daemon cannot create agents.' })
   })
+})
+
+it('exposes identity-bound close only to the Swarm service and validates its native identity', async () => {
+  const closeSwarm = vi.fn(async () => ({ closed: true as const })), core = fakeCore({ agents: { closeSwarm } })
+  const allowed = new Set(['superTabs', 'orchestrator'])
+  const payload = { expiresAt: Date.now() + 120_000, agentId: 'worker', creationId: 'super-original-creation', sessionId: 'native', createdAt: '2026-10-22T00:00:00.000Z' }
+  expect(await answerExperimentQuery(core, allowed, 'superTabs', 'close_swarm', payload)).toEqual({ closed: true })
+  expect(closeSwarm).toHaveBeenCalledWith(payload)
+  expect(await answerExperimentQuery(core, allowed, 'superTabs', 'close_swarm', { agentId: 'gone' })).toEqual({ closed: true })
+  expect(closeSwarm).toHaveBeenLastCalledWith({ agentId: 'gone' })
+  expect(await answerExperimentQuery(core, allowed, 'orchestrator', 'close_swarm', payload)).toEqual({ error: 'NOT_SUPER_TABS' })
+  for (const invalid of [{ ...payload, agentId: '' }, { ...payload, sessionId: 1 }, { ...payload, createdAt: 'bad' }, { ...payload, creationId: 'bad' }, { ...payload, creationId: 4 }, { ...payload, createdAt: 4 }, { ...payload, expiresAt: 'later' }, { ...payload, expiresAt: Infinity }]) {
+    expect(await answerExperimentQuery(core, allowed, 'superTabs', 'close_swarm', invalid)).toEqual({ error: 'INVALID_REQUEST' })
+  }
+  expect(await answerExperimentQuery(fakeCore(), allowed, 'superTabs', 'close_swarm', payload)).toEqual({ error: 'UNSUPPORTED' })
 })

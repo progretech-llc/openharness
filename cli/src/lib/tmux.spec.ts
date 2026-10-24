@@ -5,23 +5,26 @@ import { describe, expect, it, vi } from 'vitest'
 import { PROCESS_ENGINES } from '../engines/types.js'
 import type { AgentCommandOwnershipSnapshot } from './engineBin.js'
 import {
+  cleanPaneTitle,
+  isNoTmuxServerError,
+  LOAD_BUFFER_TIMEOUT_MS,
+  pasteRawIntoTmux,
+  sendLiteralToTmux,
+  sendToTmux,
+  tmuxCaptureArgs,
+} from './tmux.js'
+import {
   ambiguousAgentProcess,
   bypassPermissionActive,
   permissionModeFromArgv,
   engineProcessMatch,
   engineProcessMatchScore,
-  isNoTmuxServerError,
-  LOAD_BUFFER_TIMEOUT_MS,
   LSTART_MARKER_RE,
   liveProcessRows,
   parseProcessRow,
-  pasteRawIntoTmux,
   resumeSessionId,
-  sendLiteralToTmux,
-  sendToTmux,
-  tmuxCaptureArgs,
   withStartTicks,
-} from './tmux.js'
+} from './processTable.js'
 import { tmuxControlGate } from './tmuxControlGate.js'
 import { assumeTmuxVersion, resetTmuxVersionCache } from './tmuxVersion.js'
 
@@ -752,6 +755,34 @@ if [ "$1" = "load-buffer" ]; then cat > /dev/null; fi
     }
   })
 
+  it('does not paste a buffer once the paste is no longer allowed, and deletes it', async () => {
+    // Asked again between load-buffer and paste-buffer: the stream the paste came on may have closed meanwhile.
+    const dir = mkdtempSync(join(tmpdir(), 'harness-tmux-allowed-'))
+    const argsFile = join(dir, 'args')
+    writeFileSync(join(dir, 'tmux'), `#!/bin/sh
+printf '%s\\n' "$1" >> "$TMUX_GATE_ARGS"
+if [ "$1" = "load-buffer" ]; then cat > /dev/null; fi
+`)
+    chmodSync(join(dir, 'tmux'), 0o700)
+    writeFileSync(argsFile, '')
+    const previous = { path: process.env.PATH, args: process.env.TMUX_GATE_ARGS }
+    try {
+      process.env.PATH = `${dir}:${previous.path ?? ''}`
+      process.env.TMUX_GATE_ARGS = argsFile
+      assumeTmuxVersion({ major: 3, minor: 7 })
+      const answers = [true, false]
+      expect(await pasteRawIntoTmux('%7', 'clipboard', () => answers.shift() ?? false)).toBe(false)
+      expect(readFileSync(argsFile, 'utf8').trim().split('\n')).toEqual(['load-buffer', 'delete-buffer'])
+    } finally {
+      resetTmuxVersionCache()
+      if (previous.path === undefined) delete process.env.PATH
+      else process.env.PATH = previous.path
+      if (previous.args === undefined) delete process.env.TMUX_GATE_ARGS
+      else process.env.TMUX_GATE_ARGS = previous.args
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('gives up a paste whose tmux never takes its buffer, so the terminals waiting behind it open', async () => {
     // A tmux client whose server does not answer waits as long as the server does. Inside the notify room
     // that held every terminal open, every session made or killed, and every terminal closed with it.
@@ -784,4 +815,30 @@ if [ "$1" = "load-buffer" ]; then exec sleep 30; fi
       rmSync(dir, { recursive: true, force: true })
     }
   }, 20_000)
+})
+
+describe('cleanPaneTitle', () => {
+  // tmux sets a pane's title from any APC string (ESC _ … ESC \), and a graphics query is one: Claude Code asks the
+  // terminal for kitty graphics when it thinks it is outside tmux, as a guest's harness does (its helper starts the
+  // engine with `env -i`, so no TMUX). The query became that harness's name (measured on tmux 3.7c, 2026-10-22).
+  it('drops a kitty graphics command, which is never a title', () => {
+    expect(cleanPaneTitle('Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA')).toBeNull()
+    expect(cleanPaneTitle('Ga=d')).toBeNull()
+    expect(cleanPaneTitle('Gi=1,a=T,f=100;iVBORw0KGgo=')).toBeNull()
+    // A transfer's later chunks, an empty payload, and the query as tmux keeps it with spaces around it.
+    expect(cleanPaneTitle('Gm=1;AAAA')).toBeNull()
+    expect(cleanPaneTitle('Gq=2,a=q;')).toBeNull()
+    expect(cleanPaneTitle('  Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA  ')).toBeNull()
+  })
+  it('keeps the titles engines set, those beginning with G too', () => {
+    expect(cleanPaneTitle('✳ Fix the login test')).toBe('Fix the login test')
+    expect(cleanPaneTitle('Gemini: review the PR')).toBe('Gemini: review the PR')
+    expect(cleanPaneTitle('Go build')).toBe('Go build')
+    expect(cleanPaneTitle('G=1 is the answer')).toBe('G=1 is the answer')
+    expect(cleanPaneTitle('Ga=1 wins')).toBe('Ga=1 wins')
+    expect(cleanPaneTitle('Gx=1; then build')).toBe('Gx=1; then build')
+    // Nothing else changes: an empty title is still none, and a long one is still cut at 80.
+    expect(cleanPaneTitle('   ')).toBeNull()
+    expect(cleanPaneTitle('x'.repeat(100))).toBe('x'.repeat(80))
+  })
 })

@@ -341,6 +341,8 @@ void main() {
     for (final (code, says) in [
       ('TMUX_UNAVAILABLE', 'needs tmux'),
       ('UNSUPPORTED', 'Update the harness CLI'),
+      ('PTY_HOST_UNAVAILABLE', 'could not open a terminal'),
+      ('ENGINE_LAUNCH_REFUSED', 'cannot start on'),
       ('INVALID_ENGINE', 'Update the harness CLI on Machine m'),
     ]) {
       test('$code is worded for a person', () async {
@@ -354,6 +356,30 @@ void main() {
         );
       });
     }
+
+    test('ENGINE_LAUNCH_REFUSED shows the machine\'s own sentence', () async {
+      final rig = await signedInWith({'m': []});
+      addTearDown(rig.app.dispose);
+      const long =
+          "CODEX_HOME names a network or device path, which Harness does not use for an engine home on Windows. Set it to a folder on this computer's drive, such as C:\\Users\\ann\\.codex.";
+      rig.conn('m').answers['agent_create'] = (_) =>
+          throw refusal('ENGINE_LAUNCH_REFUSED', detail: long);
+      expect(
+        await rig.app.createAgent('m', engine: 'codex', folder: '/work'),
+        long,
+      );
+    });
+
+    test('ENGINE_LAUNCH_REFUSED with an empty detail falls back', () async {
+      final rig = await signedInWith({'m': []});
+      addTearDown(rig.app.dispose);
+      rig.conn('m').answers['agent_create'] = (_) =>
+          throw refusal('ENGINE_LAUNCH_REFUSED', detail: '');
+      expect(
+        await rig.app.createAgent('m', engine: 'codex', folder: '/work'),
+        contains('cannot start on'),
+      );
+    });
 
     test('an engine refused with its own reason says it', () async {
       final rig = await signedInWith({'m': []});
@@ -1078,6 +1104,59 @@ void main() {
       expect(rig.app.stateOf('m')!.agents.single.id, 'a');
     });
 
+    test('a stop the machine says to ask again is asked again, then goes', () async {
+      // IDENTITY_UNAVAILABLE: the conversation file changed under the machine's lookup.
+      final rig = await signedInWith({
+        'm': ['a', 'b'],
+      });
+      addTearDown(rig.app.dispose);
+      rig.app.stopRetryDelays = const [Duration.zero, Duration.zero];
+      var asked = 0;
+      rig.conn('m').answers['agent_delete'] = (_) => ++asked == 1
+          ? {'error': 'IDENTITY_UNAVAILABLE', 'held': true, 'retryable': true}
+          : {'deleted': true};
+
+      expect(await rig.app.deleteAgent('m', 'a'), isNull);
+
+      expect(rig.conn('m').payloadsOf('agent_delete'), hasLength(2));
+      expect(rig.app.stateOf('m')!.agents.map((a) => a.id), ['b']);
+    });
+
+    test('asks again at most twice, then says why', () async {
+      final rig = await signedInWith({
+        'm': ['a'],
+      });
+      addTearDown(rig.app.dispose);
+      rig.app.stopRetryDelays = const [Duration.zero, Duration.zero];
+      rig.conn('m').answers['agent_delete'] = (_) =>
+          {'error': 'IDENTITY_UNAVAILABLE', 'retryable': true};
+
+      expect(
+        await rig.app.deleteAgent('m', 'a'),
+        'Delete failed: IDENTITY_UNAVAILABLE',
+      );
+
+      expect(rig.conn('m').payloadsOf('agent_delete'), hasLength(3));
+      expect(rig.app.stateOf('m')!.agents.single.id, 'a');
+    });
+
+    test('a stop it could not confirm is not asked again', () async {
+      // STOP_UNCONFIRMED asks for a look at the harness first, not another stop.
+      final rig = await signedInWith({
+        'm': ['a'],
+      });
+      addTearDown(rig.app.dispose);
+      rig.app.stopRetryDelays = const [Duration.zero, Duration.zero];
+      rig.conn('m').answers['agent_delete'] = (_) => {'error': 'STOP_UNCONFIRMED'};
+
+      expect(
+        await rig.app.deleteAgent('m', 'a'),
+        'Delete failed: STOP_UNCONFIRMED',
+      );
+
+      expect(rig.conn('m').payloadsOf('agent_delete'), hasLength(1));
+    });
+
     test('a rename is trimmed, sent, and shown', () async {
       final rig = await signedInWith({
         'm': ['a'],
@@ -1752,6 +1831,19 @@ void main() {
       expect(
         await rig.app.retargetAgentToGridModel('m', 'a', 'qwen'),
         contains('still responding'),
+      );
+
+      rig.conn('m').answers['agent_retarget'] = (_) =>
+          throw refusal('ENGINE_LAUNCH_REFUSED', detail: 'Use another engine.');
+      expect(
+        await rig.app.retargetAgentToGridModel('m', 'a', 'qwen'),
+        'Use another engine.',
+      );
+      rig.conn('m').answers['agent_retarget'] = (_) =>
+          throw refusal('PTY_HOST_UNAVAILABLE', detail: 'harness-pty is not installed');
+      expect(
+        await rig.app.clearAgentGrid('m', 'a'),
+        "This machine's terminals did not answer. Run harness start there, then try again.",
       );
 
       // Silence is not a refusal: the machine may have done it.

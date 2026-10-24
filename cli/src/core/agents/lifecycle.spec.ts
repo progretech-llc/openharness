@@ -6,6 +6,7 @@ import { AgentStopError, createStopAgentService } from '../../lib/stopAgentServi
 import { createAgentLifecycle, createPurgeRequest, createStopRequest, type LifecycleDeps } from './lifecycle.js'
 import { IdentityReadUnavailable } from '../../engines/kit/identityScan.js'
 import { GUEST_HARNESS_REFUSAL } from '../guestPolicy.js'
+import { moveHeldLine } from '../../lib/hostMove/moveAgent.js'
 
 vi.mock('../../lib/stopAgentService.js', async (real) => ({ ...await real<object>(), createStopAgentService: vi.fn(() => vi.fn(async () => {})) }))
 vi.mock('../../lib/resumeAgentService.js', async (real) => ({
@@ -33,7 +34,8 @@ function setup(over: Partial<LifecycleDeps> = {}) {
     } as unknown as LifecycleDeps['registry'],
     stoppedAgents: { list: vi.fn(() => [row({ agentId: 'a2' })]), get: vi.fn(() => undefined) } as unknown as LifecycleDeps['stoppedAgents'],
     restartJobs: { busy: vi.fn(() => false) } as unknown as LifecycleDeps['restartJobs'],
-    tmuxBackend: null,
+    createBackend: null,
+    backendFor: vi.fn(() => undefined),
     agentReconciler: {} as never,
     forgetSession: vi.fn(),
     markDeleted: vi.fn(),
@@ -65,11 +67,11 @@ describe('stopping, purging and resuming an agent', () => {
     const { deps, lifecycle } = setup()
     expect(createStopAgentService).toHaveBeenCalledWith({
       registry: deps.registry, stoppedAgents: deps.stoppedAgents, restartJobs: deps.restartJobs, stopJobs: lifecycle.stopJobs,
-      tmuxBackend: null, agentReconciler: deps.agentReconciler, forgetSession: deps.forgetSession,
+      backendFor: deps.backendFor, agentReconciler: deps.agentReconciler, forgetSession: deps.forgetSession,
       markDeleted: deps.markDeleted, clearDeleted: deps.clearDeleted, stopNative: deps.stopNative,
     })
     expect(createResumeAgentService).toHaveBeenCalledWith({
-      registry: deps.registry, stoppedAgents: deps.stoppedAgents, tmuxBackend: null, restartJobs: deps.restartJobs,
+      registry: deps.registry, stoppedAgents: deps.stoppedAgents, createBackend: null, backendFor: deps.backendFor, restartJobs: deps.restartJobs,
       stopJobs: lifecycle.stopJobs, pinnedControls: deps.pinnedControls, retainExitedSession: deps.retainExitedSession,
       announceSession: deps.announceSession, relaunchOverrides: deps.relaunchOverrides, prepareSessionResume: deps.prepareSessionResume,
       refreshGridWebSearch: deps.refreshGridWebSearch, clearDeleted: deps.clearDeleted, attachDsh: deps.attachDsh,
@@ -106,6 +108,14 @@ describe('stopping, purging and resuming an agent', () => {
       expect(purge.stopped).toBe(deps.stoppedAgents)
       expect(purge.checkpoints).toBe(deps.sessionCheckpoints)
       expect(purge.stop).toBe(lifecycle.stopAgent)
+    })
+
+    it('asks the pane, through the core, whether an agent waits at its folder-trust question', () => {
+      const atFolderTrust = vi.fn(async () => true)
+      const atEmptyComposer = vi.fn(async () => true)
+      const { purge } = setup({ atFolderTrust, atEmptyComposer })
+      expect(purge.atFolderTrust).toBe(atFolderTrust)
+      expect(purge.atEmptyComposer).toBe(atEmptyComposer)
     })
 
     it('waits on an agent that is restarting or stopping', () => {
@@ -152,6 +162,24 @@ describe('stopping, purging and resuming an agent', () => {
       vi.spyOn(running.deps.registry, 'byAgent').mockReturnValue(row({ guest: 'kim@acme.io' }))
       expect(await running.lifecycle.resumeAgent('a1')).toEqual(GUEST_HARNESS_REFUSAL)
       expect(vi.mocked(createResumeAgentService).mock.results.every((r) => !vi.mocked(r.value).mock.calls.length)).toBe(true)
+    })
+
+    it('starts no engine for an agent a stopped move may still run beside, stopped or running, this start', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const held = setup({ moveHeld: (id) => id === 'a1', stoppedAgents: { list: () => [], get: vi.fn(() => row()) } as never })
+      expect(await held.lifecycle.resumeAgent('a1')).toMatchObject({ ok: false, error: 'AGENT_BUSY' })
+      expect(vi.mocked(createResumeAgentService).mock.results.at(-1)!.value).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledWith(moveHeldLine('a1'))
+      warn.mockRestore()
+    })
+
+    it('holds an id that no store knows by that id, as given', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const held = setup({ moveHeld: (id) => id === 'ghost', stoppedAgents: { list: () => [], get: vi.fn(() => undefined) } as never })
+      vi.spyOn(held.deps.registry, 'byAgent').mockReturnValue(undefined)
+      expect(await held.lifecycle.resumeAgent('ghost')).toMatchObject({ ok: false, error: 'AGENT_BUSY' })
+      expect(warn).toHaveBeenCalledWith(moveHeldLine('ghost'))
+      warn.mockRestore()
     })
 
     it('waits while the agent is being purged, or while a purge holds its folder', async () => {

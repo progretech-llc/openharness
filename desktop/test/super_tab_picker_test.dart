@@ -73,6 +73,8 @@ void main() {
     final c = await f.app.superTabs.open(tabId);
     await c.refresh();
     c.select('offline');
+    // The teammate's machine has no reading, so it sits under the closed "Offline" disclosure.
+    c.offlineMachinesOpen = true;
     await f.app.agentPreference.remember('codex');
     await f.app.projectHistory.select('m', '/work/project');
     final map = MemoryKeymap();
@@ -114,9 +116,24 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('0 agents · 1 person'));
+    final machine = find.byKey(const ValueKey('super-machine-teammate-machine'));
+    if (machine.evaluate().isEmpty &&
+        find.byTooltip('Conversations').evaluate().isNotEmpty) {
+      await tester.tap(find.byTooltip('Conversations'));
+      await tester.pumpAndSettle();
+    }
+    // The teammate's machine is not online here, so it sits under the closed "Offline" disclosure.
+    final offline = find.byKey(const ValueKey('super-machines-offline'));
+    if (machine.evaluate().isEmpty && offline.evaluate().isNotEmpty) {
+      await tester.ensureVisible(offline);
+      await tester.tap(offline);
+      await tester.pumpAndSettle();
+    }
+    await tester.ensureVisible(machine);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Add agent'));
+    await tester.tap(machine);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Attach running agent'));
     await tester.pumpAndSettle();
     return f;
   }
@@ -135,7 +152,7 @@ void main() {
       );
       await tester.enterText(input, 'Teammate builder');
       await tester.pumpAndSettle();
-      expect(find.text('Add agent to Offline editing'), findsOneWidget);
+      expect(find.text('Add agent to Pilot'), findsOneWidget);
       expect(tester.widget<TextField>(input).focusNode!.hasFocus, isTrue);
       final results = find.byType(SwarmSearchResults);
       expect(
@@ -177,8 +194,8 @@ void main() {
     (tester) async {
       final f = await open(tester);
       final shared = f.app.activeSwarm;
-      expect(find.text('Add agent to Offline editing'), findsOneWidget);
-      expect(find.text('Shared with everyone in Pilot.'), findsOneWidget);
+      expect(find.text('Add agent to Pilot'), findsOneWidget);
+      expect(find.text('Starts in Offline editing.'), findsOneWidget);
       expect(find.text('Models'), findsNothing);
       expect(find.text('Store'), findsNothing);
       final search = tester
@@ -240,7 +257,7 @@ void main() {
       f.app.superTabs.peek(tabId)!.revokeAccess('Access was removed.');
       await tester.pumpAndSettle();
       expect(input, findsNothing);
-      expect(find.text('Add agent to Offline editing'), findsNothing);
+      expect(find.text('Add agent to Pilot'), findsNothing);
       expect(f.connection.server.posts, isEmpty);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
@@ -331,7 +348,7 @@ void main() {
     expect(f.connection.joins.single['command'], containsPair('lead', false));
     expect(f.app.swarms, hasLength(1));
     expect(f.app.panes, isEmpty);
-    // A successful join clears its journal; it was never a new Super Tab.
+    // A successful join clears its journal; it was never a new Swarm.
     expect(
       f.store.values.entries
           .where((entry) => entry.key.startsWith('super_tab.launch.'))

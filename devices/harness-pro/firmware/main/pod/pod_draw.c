@@ -286,8 +286,8 @@ static void cell_raster_core(const ht_run_t *r, ht_rect_t clip, uint16_t *out)
 // recap's small pet) is resampled again every frame. When the caller knows what is under the frame is one colour (pod_cell_flat), the first raster
 // resamples it once onto that colour into the arena and every later one is a row copy. The result is the very pixels the resampler writes onto
 // that ground: the golden screens do not change. Keyed by the frame's identity (its pointers and shape), zoom and ground, so another engine, another
-// frame or another ground is another entry; entries are never evicted (a scene still waiting to be drawn may name one), and when the table or the
-// arena is full the frame is simply resampled each time as before. Render task only.
+// frame or another ground is another entry. When the table or the arena is full it starts over; a raster looks its entry up (and bakes it) when it
+// runs, so nothing holds an entry across rasters. Render task only.
 // 360 K pixels (720 KB of PSRAM): every frame the Notices faces and the recap's RELAX and REST scenes can show for all four pets at once come to 353 K.
 enum { BAKE_SLOTS = 64, BAKE_ARENA_PX = 360 * 1024 };
 typedef struct { const ht_cell_frame_t *f; const uint8_t *cells; const uint16_t *palette; uint16_t ground, w, h, cols, rows; uint8_t z, s16; uint32_t off; } bake_t;
@@ -320,7 +320,11 @@ static const bake_t *bake_of(const ht_run_t *r)
             b->cols == f->cols && b->rows == f->rows && b->w == r->w && b->h == r->pro_height) return b;
     }
     size_t px = (size_t)r->w * (size_t)r->pro_height;
-    if (s_nbake >= BAKE_SLOTS || px > BAKE_ARENA_PX - s_arena_used) return NULL;
+    if (px > BAKE_ARENA_PX) return NULL;
+    // Full: start the arena over (the arena never evicts one entry). The screen shown re-bakes what it draws, which fits: no
+    // screen needs more than the arena (the Working card about 126 K px), while a session that visits every Notices, Recap and
+    // Working pet adds up to more.
+    if (s_nbake >= BAKE_SLOTS || px > BAKE_ARENA_PX - s_arena_used) { s_nbake = 0; s_arena_used = 0; }
     ht_run_t plain = *r;   // the same run at the origin, an ordinary cell run: resampled over the ground into the arena
     plain.x = 0; plain.y = 0; plain.text[0] = 0;
     uint16_t *dst = s_arena + s_arena_used;
@@ -339,8 +343,13 @@ static void cell_raster(const ht_run_t *r, ht_rect_t clip, uint16_t *out)
     if (!b) { cell_raster_core(r, clip, out); return; }
     int left = imax(clip.x, r->x), right = imin(clip.x + clip.w, r->x + r->w);
     int top = imax(clip.y, r->y), bottom = imin(clip.y + clip.h, r->y + r->pro_height);
-    for (int y = top; y < bottom; y++)
-        memcpy(out + (y - clip.y) * clip.w + left - clip.x, s_arena + b->off + (size_t)(y - r->y) * b->w + (left - r->x), (size_t)(right - left) * sizeof *out);
+    // Only the frame's own pixels: what the resampler left as the ground is skipped, so a frame baked over one colour also sits on a ground that
+    // only nearly is (the Working card's gradient) without showing its box.
+    for (int y = top; y < bottom; y++) {
+        uint16_t *d = out + (y - clip.y) * clip.w + left - clip.x;
+        const uint16_t *src = s_arena + b->off + (size_t)(y - r->y) * b->w + (left - r->x);
+        for (int x = 0; x < right - left; x++) if (src[x] != b->ground) d[x] = src[x];
+    }
 }
 
 // ---- ring arc -------------------------------------------------------------------------------------------
@@ -504,6 +513,33 @@ void pod_grad_aa_dither(ht_scene_t *s, int x, int y, int w, int h, int radius, u
     grad_params_t p = {top, bottom, 3};
     memcpy(r->text, &p, sizeof p);
 }
+typedef struct { uint16_t top, bottom, bg; int16_t edge, gy0, gh; uint8_t k, inside_left; } veil_params_t;
+_Static_assert(sizeof(veil_params_t) <= HT_TEXT_BYTES, "veil parameters fit run->text");
+void pod_veil(ht_scene_t *s, int x, int y, int w, int h, int edge, bool inside_left, int gy0, int gh, uint16_t top, uint16_t bottom, uint16_t bg, unsigned k)
+{
+    if (w <= 0 || h <= 0) return;
+    ht_run_t *r = new_run(s, POD_VEIL, x, y, w, h);
+    if (!r) return;
+    veil_params_t p = {top, bottom, bg, (int16_t)edge, (int16_t)gy0, (int16_t)gh, (uint8_t)imin(255, (int)k), inside_left};
+    memcpy(r->text, &p, sizeof p);
+}
+static void veil_raster(const ht_run_t *r, ht_rect_t clip, uint16_t *out)
+{
+    veil_params_t p;
+    memcpy(&p, r->text, sizeof p);
+    int x0 = imax(clip.x, r->x), x1 = imin(clip.x + clip.w, r->x + r->w);
+    int y0 = imax(clip.y, r->y), y1 = imin(clip.y + clip.h, r->y + r->pro_height);
+    const int last = p.gh > 1 ? p.gh - 1 : 1;
+    for (int y = y0; y < y1; y++) {
+        const int row = imin(imax(y - p.gy0, 0), last);
+        const uint16_t ink = mix565(p.bottom, p.top, (unsigned)row, (unsigned)last);
+        uint16_t *d = out + (y - clip.y) * clip.w - clip.x;
+        for (int x = x0; x < x1; x++) {
+            const bool in = p.inside_left ? x < p.edge : x >= p.edge;
+            d[x] = in ? mix565(ink, d[x], p.k, 255) : p.bg;
+        }
+    }
+}
 static void grad_raster(const ht_run_t *r, ht_rect_t clip, uint16_t *out)
 {
     grad_params_t p;
@@ -644,6 +680,7 @@ void pod_draw_raster(const ht_run_t *r, ht_rect_t clip, uint16_t *out)
     case POD_ARC: arc_raster(r, clip, out); break;
     case POD_GRAD: grad_raster(r, clip, out); break;
     case POD_TRI: tri_raster(r, clip, out); break;
+    case POD_VEIL: veil_raster(r, clip, out); break;
     default: break;
     }
 }

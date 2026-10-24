@@ -43,6 +43,8 @@ class SwitchConnection extends MonitorConnection {
   final handoffCalls = <Map<String, dynamic>>[];
   final handoffTimeouts = <Duration>[];
   final eventsAtHandoff = <List<String>>[];
+  final completedHandoffs = <Map<String, dynamic>>[];
+  String? completionError;
 
   @override
   Future<Map<String, dynamic>> request(
@@ -50,6 +52,10 @@ class SwitchConnection extends MonitorConnection {
     Map<String, dynamic> payload = const {},
     Duration timeout = const Duration(seconds: 20),
   }) async {
+    if (type == 'agent_handoff_complete') {
+      completedHandoffs.add(Map.of(payload));
+      return completionError == null ? {'ok': true} : {'error': completionError};
+    }
     if (type == 'agent_handoff_prepare') {
       handoffCalls.add(Map.of(payload));
       handoffTimeouts.add(timeout);
@@ -176,6 +182,32 @@ class SwitchDeskApi extends ApiClient {
 }
 
 void main() {
+  test('a lost completion report retries the same replacement without another launch', () async {
+    final connection = SwitchConnection()..completionError = 'SERVICE_UNAVAILABLE';
+    final app = fixture(connection);
+    addTearDown(app.dispose);
+    await app.addAgentToSwarm('m', 'a0');
+    expect(await app.changeAgent('m', 'a0', 'claude'), contains('new agent started'));
+    expect(app.panes.single.agentId, 'a0');
+    expect(connection.creations, hasLength(1));
+    connection.completionError = null;
+    expect(await app.changeAgent('m', 'a0', 'claude'), isNull);
+    expect(connection.creations, hasLength(1));
+    expect(connection.completedHandoffs, hasLength(2));
+    expect(connection.completedHandoffs.first, connection.completedHandoffs.last);
+    expect(connection.events, ['save/stop', 'start']);
+  });
+
+  test('an older daemon can finish Change agent without the new completion request', () async {
+    final connection = SwitchConnection()..completionError = 'UNSUPPORTED';
+    final app = fixture(connection);
+    addTearDown(app.dispose);
+    await app.addAgentToSwarm('m', 'a0');
+    expect(await app.changeAgent('m', 'a0', 'claude'), isNull);
+    expect(connection.completedHandoffs, hasLength(1));
+    expect(app.panes.single.agentId, isNot('a0'));
+  });
+
   test('Devices offers every agent while absent from the public catalog', () {
     final connection = SwitchConnection();
     final app = fixture(connection, harnessId: devicesHarnessId);
@@ -256,6 +288,12 @@ void main() {
 
         expect(await app.changeAgent('m', 'a0', engine.id), isNull);
         expect(connection.events, ['save/stop', 'start']);
+        expect(connection.completedHandoffs.single, {
+          'agentId': 'a0',
+          'replacementId': 'manager',
+          'changeId': connection.creations.single['creationId'],
+          'targetEngine': engine.id,
+        });
         expect(connection.creations.single, containsPair('engine', engine.id));
         expect(
           connection.creations.single,
@@ -556,6 +594,12 @@ void main() {
         'held': true,
         'retryable': true,
       },
+      'IDENTITY_UNAVAILABLE for a replaced program': (_) => {
+        'error': 'IDENTITY_UNAVAILABLE',
+        'held': true,
+        'retryable': true,
+        'hold': 'PROGRAM_REPLACED',
+      },
       'SERVICE_UNAVAILABLE': (_) => {'error': 'SERVICE_UNAVAILABLE'},
       'a held reply without an error': (p) => {...handoffOk(p), 'held': true},
       'an empty reply without project identity': (_) => {
@@ -587,7 +631,12 @@ void main() {
           connection.handoff = reply;
           expect(
             await app.changeAgent('m', 'a0', 'claude'),
-            contains('Waiting'),
+            anyOf(
+              contains('Waiting'),
+              contains('not confirmed yet'),
+              contains('took too long'),
+              contains('Restart Harness'),
+            ),
           );
           expect(connection.handoffCalls, hasLength(1));
           expect(connection.recentReads, 0);
@@ -605,6 +654,25 @@ void main() {
         },
       );
     }
+
+    test('says which hold it is, by the reply\'s code alone', () async {
+      final (connection, app) = await open();
+      connection.handoff = (_) => {
+        'error': 'IDENTITY_UNAVAILABLE',
+        'held': true,
+        'hold': 'PROGRAM_REPLACED',
+        'reason': 'words from the machine are never shown',
+      };
+      final message = await app.changeAgent('m', 'a0', 'claude');
+      expect(message, contains('was updated while this harness was running'));
+      expect(message, contains('Restart Harness'));
+      expect(message, isNot(contains('words from the machine')));
+      connection.handoff = (_) => {'error': 'TIMEOUT', 'held': true};
+      expect(
+        await app.changeAgent('m', 'a0', 'claude'),
+        'Preparing the handoff took too long. Try switching again.',
+      );
+    });
 
     test(
       'unreadable history holds even if the mirror has no saved text',
@@ -638,7 +706,10 @@ void main() {
         final (connection, app) = await open();
         connection.recent = {'asks': <String>[], 'events': <Object>[]};
         arrange(connection);
-        expect(await app.changeAgent('m', 'a0', 'claude'), contains('Waiting'));
+        expect(
+          await app.changeAgent('m', 'a0', 'claude'),
+          anyOf(contains('Waiting'), contains('took too long')),
+        );
         expect(connection.recentReads, 0);
         expect(connection.creations, isEmpty);
         expect(connection.events, isNot(contains('save/stop')));

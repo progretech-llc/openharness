@@ -14,7 +14,7 @@ import { usageTarget, usageTargetKey, usageSnapshot, validUsage, validUsageTarge
  * each asked of the core over its link (`ask`). The agents it reads come as the apps are shown them (`service_query shown`): each with its
  * name, whether its terminal is there and its harness's viewer.
  */
-import { CONNECTOR_VAULT_OFF, CONVERSATIONS_OFF, DAEMON_UNKNOWN, DELIVERIES_OFF, LANE_OFF, OBSERVER_KEY_OFF, resolveAgent, TAB_KEY_OFF, TAB_RELAY_OFF, TERMINALS_OFF, WIFI_OFF, type CloudCore, type CoreApi, type DaemonAddress, type TerminalWatch } from '../core/api.js'
+import { CONNECTOR_VAULT_OFF, CONVERSATIONS_OFF, DAEMON_UNKNOWN, DELIVERIES_OFF, LANE_OFF, OBSERVER_KEY_OFF, resolveAgent, TAB_KEY_OFF, TAB_RELAY_OFF, TERMINALS_OFF, WIFI_OFF, type CloudCore, type SuperTabsCore, type CoreApi, type DaemonAddress, type TerminalWatch } from '../core/api.js'
 import type { AgentDshContext } from '../lib/agentFrame.js'
 import type { RegisteredSession } from '../lib/registry.js'
 import type { turnsLink } from './turnsLink.js'
@@ -120,7 +120,10 @@ export function processCoreApi(dataDir: string, service: string, view: AgentsVie
       live,
       displayName: (session) => (session as ShownAgent).displayName ?? '',
       byAgent: (agentId) => live().find((session) => session.agentId === agentId),
+      closeSwarm: async request => await (ask?.('close_swarm', { ...request }) ?? Promise.resolve({ error: 'SERVICE_UNAVAILABLE' }))
+        .catch(() => ({ error: 'SERVICE_UNAVAILABLE' })),
       stopped: async agentId => (await ask?.('stopped', { agentId }).catch(() => null))?.stopped === true,
+      gone: async agentId => (await ask?.('gone', { agentId }).catch(() => null))?.gone === true,
       creationStatus: async creationId => creationObservation(creationId,
         (await ask?.('creation_status', { creationId }).catch(() => null))?.observation),
       resolve: (id) => resolveAgent(live(), id),
@@ -233,6 +236,14 @@ export function processCoreApi(dataDir: string, service: string, view: AgentsVie
         ask: (agentId, requestId, question) => { void ask('cloud_ask', { agentId, questionId: requestId, question }).catch(() => {}) },
         unask: (agentId, requestId) => { void ask('cloud_unask', { agentId, questionId: requestId }).catch(() => {}) },
       } satisfies CloudCore,
+      // The Super Tab service's waits (core/superTabAttention.ts), the whole set each time: a core that missed one
+      // hears the next, and a new core the host's first roster (superTabs/host.ts).
+      superTabs: {
+        attention: (items) => { void ask('super_tab_attention', { items }).catch(() => {}) },
+        // The Swarm cards, whole each time they change, and one Lead's recap (core/superTabCards.ts).
+        cards: (items) => { void ask('super_tab_cards', { items }).catch(() => {}) },
+        cardRecap: (recap) => { void ask('super_tab_card_recap', { recap }).catch(() => {}) },
+      } satisfies SuperTabsCore,
     } : {}),
   }
 }

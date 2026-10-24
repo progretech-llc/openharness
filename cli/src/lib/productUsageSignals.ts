@@ -1,4 +1,5 @@
-import { HEALTH_MEASURES, type HealthSource, type ResumeReason } from './productHealthContract.js'
+import { AUTOMATIC_POLL_ACTIONS, HEALTH_FAILURES, HEALTH_MEASURES, type HealthSource, type ResumeReason } from './productHealthContract.js'
+import type { MessageOutcome, MessageReceipt } from './sessionInput.js'
 import { LAUNCH_ERROR_CODES, PRODUCT_USAGE_FLOWS, PRODUCT_USAGE_LAUNCH_ENGINES, PRODUCT_USAGE_USER_OPENED_ACTIONS,
   type LaunchErrorCode, type ProductUsageLaunchEngine, type ProductUsageMetric } from './productUsageContract.js'
 
@@ -12,12 +13,12 @@ const actions = { agent_create: 'create', agent_resume: 'resume', agent_restart:
   browser_open: 'browser_open',
 } as const
 const unmeasured = (..._args: unknown[]): void => {}
-const setup = new Set(['TMUX_UNAVAILABLE', 'TMUX_TOO_OLD_FOR_DSH', 'TMUX_TOO_OLD_FOR_GRID', 'ENGINE_UNAVAILABLE',
-  'NATIVE_LAUNCH_HELD', 'DSH_MATERIALIZE_FAILED', 'SPAWN_FAILED', 'REGISTRATION_FAILED', 'GRID_CONFIG_FAILED'])
+const setup = new Set(['TMUX_UNAVAILABLE', 'PTY_HOST_UNAVAILABLE', 'TMUX_TOO_OLD_FOR_DSH', 'TMUX_TOO_OLD_FOR_GRID',
+  'ENGINE_UNAVAILABLE', 'NATIVE_LAUNCH_HELD', 'DSH_MATERIALIZE_FAILED', 'SWARM_SKILL_FAILED', 'SPAWN_FAILED', 'REGISTRATION_FAILED', 'GRID_CONFIG_FAILED'])
 const auth = new Set(['UNAUTHORIZED', 'AUTH_REQUIRED', 'LOGIN_REQUIRED', 'OWNER_REQUIRED', 'E2EE_REQUIRED'])
 const unavailable = new Set(['SERVICE_UNAVAILABLE', 'SERVICE_FAILED', 'GRID_UNAVAILABLE', 'API_UNAVAILABLE',
   'UNSUPPORTED', 'UNSUPPORTED_ON_REMOTE', 'TIMEOUT', 'NATIVE_UNAVAILABLE'])
-const invalid = new Set(['INVALID_ENGINE', 'INVALID_CWD', 'CWD_NOT_FOUND', 'INVALID_GRID', 'INVALID_DSH',
+const invalid = new Set(['INVALID_ENGINE', 'INVALID_CWD', 'CWD_NOT_FOUND', 'INVALID_GRID', 'INVALID_DSH', 'INVALID_SWARM_ROLE',
   'INVALID_MODEL', 'INVALID_PERMISSION_MODE', 'INVALID_CREATION_ID', 'INVALID_PROJECT_SOURCE', 'WORKTREE_BUSY'])
 const resumeReasons = new Map<string, ResumeReason>([
   ['TMUX_UNAVAILABLE', 'runtime_unavailable'], ['NATIVE_LAUNCH_HELD', 'runtime_unavailable'],
@@ -60,7 +61,7 @@ export interface ProductUsageLaunchSignal {
   phase: 'start' | 'pending' | 'created' | 'failed' | 'cancelled' | 'unconfirmed' | 'work_requested'
   origin?: 'interactive' | 'tool'
   failure?: Failure
-  /** The listed code of an `other` failure, or of a created launch's late one (`late`). */
+  /** The listed code of an `other` or setup failure, or of a created launch's late one (`late`). */
   code?: LaunchErrorCode
   wait?: 'install' | 'model' | 'native' | 'other'
   /** The engine a new launch asked for (`start`), as a fixed name: an installation's first launch counts it. */
@@ -95,7 +96,7 @@ export function productUsageLaunch(type: string, id: unknown, emit: (signal: Pro
   return (error: unknown, state: unknown, agent: unknown, held: unknown) => {
     if (error != null || state === 'failed') {
       const failure = failureKind(error)
-      send({ phase: 'failed', failure, ...(failure === 'other' ? { code: launchErrorCode(error) } : {}) })
+      send({ phase: 'failed', failure, ...(failure === 'other' || failure === 'setup' ? { code: launchErrorCode(error) } : {}) })
     }
     else if (state === 'created' || agent) send(createdSignal(agent))
     else if (state === 'pending') send({ phase: 'pending', wait: held === 'install' ? 'install' : held === 'models' ? 'model' : held === 'native' ? 'native' : 'other' })
@@ -129,13 +130,20 @@ export function productUsageRequest(type: string, emit: (metric: ProductUsageMet
   let answered = false
   // A fixed poll is `automatic` whichever app makes it, the phone's included: its own source is for what a
   // person on it asked for.
-  const origin = (source === 'app' || source === 'phone') && ['history', 'history_page', 'store_list', 'model_list'].includes(action)
+  const origin = (source === 'app' || source === 'phone') && (AUTOMATIC_POLL_ACTIONS as readonly string[]).includes(action)
     ? 'automatic' : source
+  // `automatic` is every app's polls, the Desktop's and the phone's together: the phone's are counted again, apart.
+  const phonePoll = source === 'phone' && origin === 'automatic'
   const count = (measure: string) => { if (action && action !== 'message') { try { emit(`${action}_${measure}` as ProductUsageMetric) } catch { /* Optional measurement. */ } } }
-  const detail = (measure: string) => { if (!source) return; try { emit(`request_${origin}_${action}_${measure}` as ProductUsageMetric) } catch { /* Optional measurement. */ } }
+  const detail = (measure: string) => {
+    if (!source) return
+    try { emit(`request_${origin}_${action}_${measure}` as ProductUsageMetric) } catch { /* Optional measurement. */ }
+    if (phonePoll) { try { emit(`request_phone_automatic_${action}_${measure}` as ProductUsageMetric) } catch { /* Optional measurement. */ } }
+  }
   count('requests'); detail('started')
   if (userAction && (PRODUCT_USAGE_USER_OPENED_ACTIONS as readonly string[]).includes(action)) count('user_requests')
-  return (error: unknown, state: unknown, hasAgent: boolean, ok?: unknown) => {
+  // [failure]: the kind of a refusal its caller already knows (a message's, [messageReceipt]), not read off a code.
+  return (error: unknown, state: unknown, hasAgent: boolean, ok?: unknown, failure?: typeof HEALTH_FAILURES[number]) => {
     if (!action || answered) return
     answered = true
     if (action === 'resume' && (error != null || ok === false || ['failed', 'cancelled', 'unconfirmed', 'unavailable'].some(value => state === value))) {
@@ -153,13 +161,52 @@ export function productUsageRequest(type: string, emit: (metric: ProductUsageMet
       // Which code an `other` refusal of a create or a resume had: 22 creates and 9 resumes were `other` on
       // 2026-10-16 (production counters), with nothing to say why. A fixed name from the list, or unlisted.
       if (kind === 'other' && (action === 'create' || action === 'resume')) count(`error_code_${launchErrorCode(error)}`)
-      detail(`error_${error === 'TIMEOUT' ? 'timeout' : typeof error === 'string' && ['AGENT_NOT_FOUND', 'SESSION_NOT_FOUND', 'NOT_FOUND'].includes(error) ? 'not_found' : typeof error === 'string' && ['DELETE_IN_PROGRESS', 'WORKTREE_BUSY', 'BUSY'].includes(error) ? 'conflict' : failureKind(error)}`)
+      // The 2026-10-21 setup spike (10 failed launches, 4 phone creates) named no prerequisite. These new
+      // families preserve the old `other`-by-code totals and keep the phone's creates apart from Desktop's.
+      if (kind === 'setup' && action === 'create') {
+        const code = launchErrorCode(error)
+        count(`error_setup_code_${code}`)
+        if (origin === 'phone') {
+          try { emit(`phone_create_error_setup_code_${code}` as ProductUsageMetric) } catch { /* Optional measurement. */ }
+        }
+      }
+      // A delete's or a restart's, whatever its kind: the phone's 3 delete refusals were `other` and its 2 restart
+      // refusals `setup` on 2026-10-19, a kind of nine codes, with nothing to say which.
+      if (action === 'delete' || action === 'restart') {
+        count(`error_code_${launchErrorCode(error)}`)
+        // The phone's again, apart: the family above mixes every client of this daemon.
+        if (origin === 'phone') {
+          try { emit(`phone_${action}_error_code_${launchErrorCode(error)}` as ProductUsageMetric) } catch { /* Optional measurement. */ }
+        }
+      }
+      detail(`error_${failure ? failure : error === 'TIMEOUT' ? 'timeout' : typeof error === 'string' && ['AGENT_NOT_FOUND', 'SESSION_NOT_FOUND', 'NOT_FOUND'].includes(error) ? 'not_found' : typeof error === 'string' && ['DELETE_IN_PROGRESS', 'WORKTREE_BUSY', 'BUSY'].includes(error) ? 'conflict' : failureKind(error)}`)
     } else if (state === 'pending' || state === 'preparing' || state === 'starting') { count('pending'); detail('pending') }
     else if (state === 'unconfirmed' || state === 'unavailable' || state === 'cancelled') { count('unknown'); detail(state === 'cancelled' ? 'cancelled' : 'unknown') }
     else if (!['create', 'resume', 'restart', 'fork'].includes(action) || hasAgent || state === 'created') { count('ok'); detail('ok') }
     else { count('unknown'); detail('unknown') }
     const elapsed = Math.max(0, now() - started)
     count(elapsed < 1000 ? 'under_1s' : elapsed < 10_000 ? '1s_to_10s' : elapsed < 60_000 ? '10s_to_1m' : 'over_1m')
+  }
+}
+
+/** Each refusal of a person's message by the kind the person was told (lib/sessionInput.ts `MessageOutcome`). */
+const messageFailures = {
+  agent_gone: 'not_found', runtime_gone: 'unavailable', held: 'conflict', withheld: 'conflict', queue_full: 'conflict',
+  not_submitted: 'timeout', queue_expired: 'timeout', invalid: 'invalid', paste_failed: 'other',
+} as const satisfies Partial<Record<MessageOutcome, typeof HEALTH_FAILURES[number]>>
+
+/**
+ * A person's message measured by what became of it: until 2026-10-20 a `message` request had its `started` and
+ * nothing more, as nothing answers it (2026-10-19: 14 from the phone). `ok` once its engine took it, `failed` by
+ * the kind of what the person was told, `unknown` typed and never confirmed, `cancelled` stopped by the person.
+ * The request's own counters only (`request_<source>_message_<result>`): no text, agent or reason leaves here.
+ */
+export function messageReceipt(measured: ReturnType<typeof productUsageRequest>): MessageReceipt {
+  return (outcome) => {
+    if (outcome === 'started' || outcome === 'taken') measured(undefined, undefined, false)
+    else if (outcome === 'cancelled') measured(undefined, 'cancelled', false)
+    else if (outcome === 'ambiguous' || outcome === 'prompt_mismatch' || outcome === 'turn_ended') measured(undefined, 'unconfirmed', false)
+    else measured(undefined, 'failed', false, undefined, messageFailures[outcome])
   }
 }
 

@@ -6,6 +6,68 @@ import 'package:harness/super_tabs/controller.dart';
 import 'support/super_tab_fixture.dart';
 
 void main() {
+  test(
+    'receipt refreshes the latest own message when a new reply arrives',
+    () async {
+      final server = ConversationServer()..append('Please start.');
+      server.messages.first['deliveries'] = [
+        {'id': 'delivery', 'agentId': 'lead-agent', 'status': 'claimed'},
+      ];
+      final c = server.controller();
+      await c.refresh();
+      server.messages.first['deliveries'] = [
+        {'id': 'delivery', 'agentId': 'lead-agent', 'status': 'answered'},
+      ];
+      server.append('Done.');
+      server.messages.last['author'] = {
+        'kind': 'agent',
+        'id': 'lead-agent',
+        'name': 'Lead',
+      };
+      server.messages.last['replyTo'] = server.messages.first['id'];
+      await c.refresh();
+      expect(c.messages('lead').first.deliveries.single['status'], 'answered');
+      c.dispose();
+    },
+  );
+
+  test(
+    'group terminals keep every member when selecting one and after reopening',
+    () async {
+      final server = ConversationServer();
+      server.state['agents'] = [
+        for (final id in ['a', 'b'])
+          {
+            'id': id,
+            'name': id,
+            'machineId': 'm',
+            'harnessId': 'native-$id',
+            'contributorId': 'owner',
+            'configuration': {'engine': 'codex'},
+          },
+      ];
+      (server.state['conversations'] as List)[1]['agentIds'] = ['a', 'b'];
+      final c = server.controller();
+      await c.refresh();
+      c.selectGroupTerminals('offline');
+      expect(c.terminalAgents('offline').map((a) => a.id), ['a', 'b']);
+      c.selectTerminal('offline', 'b');
+      expect(c.terminalAgents('offline').map((a) => a.id), ['a', 'b']);
+      await c.flush();
+      c.dispose();
+      final restored = server.controller(initial: server.saved);
+      await restored.refresh();
+      expect(restored.terminalAgents('offline').map((a) => a.id), ['a', 'b']);
+      restored.selectGroupTerminals('offline');
+      expect(restored.terminalAgents('offline').map((a) => a.id), ['a', 'b']);
+      (server.state['conversations'] as List)[1]['agentIds'] = ['a'];
+      await restored.refresh();
+      expect(restored.terminalAgents('offline').map((a) => a.id), ['a']);
+      restored.revokeAccess('Removed');
+      expect(restored.terminalAgents('offline'), isEmpty);
+      restored.dispose();
+    },
+  );
   test('terminal selections survive reopening and cannot cross accounts or group membership', () async {
     final server = ConversationServer();
     server.state['agents'] = [
@@ -100,6 +162,7 @@ void main() {
         controller.unread(controller.snapshot!.conversation('lead')!),
         isTrue,
       );
+      await controller.loadMessages('lead');
       controller.markRead('lead');
       expect(
         controller.unread(controller.snapshot!.conversation('lead')!),
@@ -107,6 +170,69 @@ void main() {
       );
     },
   );
+
+  test(
+    'a displayed tail stays read when an older snapshot catches up',
+    () async {
+      final server = ConversationServer()..append('First visible update');
+      final c = await open(server);
+      c.markRead('lead', through: 1);
+      server.append('Arrived before the snapshot');
+      await c.loadMessages('lead');
+      expect(c.selected!.lastMessageSequence, 1);
+      expect(c.unread(c.selected!), isTrue);
+      c.markRead('lead', through: 2);
+      await c.flush();
+      expect(server.saved!['readAt'], {'lead': 2});
+      await c.refresh();
+      expect(c.selected!.lastMessageSequence, 2);
+      expect(c.unread(c.selected!), isFalse);
+    },
+  );
+
+  test(
+    'read boundaries cannot acknowledge messages that were never loaded',
+    () async {
+      final server = ConversationServer()..append('Loaded update');
+      final c = await open(server);
+      server.append('A newer lead message');
+      server.append('A workgroup never opened', conversationId: 'offline');
+      c.select('offline');
+      // The selected-group request has not returned. No snapshot-only boundary
+      // can acknowledge either the missing workgroup or the missing lead tail.
+      c.markRead('offline', through: 999);
+      c.markRead('lead', through: 999);
+      await c.flush();
+      expect(server.saved!['readAt'], {'lead': 1});
+      await c.refresh();
+      c.markRead('lead', through: 999);
+      expect(c.unread(c.snapshot!.conversation('lead')!), isTrue);
+      expect(c.unread(c.snapshot!.conversation('offline')!), isTrue);
+      c.markRead('offline', through: 3);
+      expect(c.unread(c.snapshot!.conversation('offline')!), isFalse);
+      expect(c.unread(c.snapshot!.conversation('lead')!), isTrue);
+    },
+  );
+
+  test('read markers persist for their Swarm and account only', () async {
+    final server = ConversationServer()..append('Seen update');
+    final c = await open(server);
+    c.markRead('lead', through: 1);
+    await c.flush();
+    final saved = server.saved!;
+    final restored = server.controller(initial: saved);
+    final other = server.controller(initial: saved, account: 'other');
+    addTearDown(restored.dispose);
+    addTearDown(other.dispose);
+    await restored.refresh();
+    await other.refresh();
+    expect(restored.unread(restored.selected!), isFalse);
+    expect(other.unread(other.selected!), isTrue);
+    restored.revokeAccess('Removed');
+    restored.markRead('lead', through: 99);
+    await restored.flush();
+    expect(server.saved!['readAt'], {'lead': 1});
+  });
 
   test(
     'a lost send reply reuses its durable receipt after closing and reopening',

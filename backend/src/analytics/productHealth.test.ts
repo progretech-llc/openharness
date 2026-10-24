@@ -34,6 +34,12 @@ it('creates two independent margins with no joint dimensions or arbitrary labels
   expect(cleanUsageContext({ ...context, release: 'PRIVATE/custom-build', private: 'PRIVATE' })).toEqual({ ...context, release: 'unknown' })
   expect(cleanUsageContext({ ...context, platform: 'PRIVATE' })).toBeUndefined()
 })
+it('takes a tester\'s build as its own channel, with no release or platform margins', () => {
+  const phone = { surface: 'phone', release: '1.0.7', platform: 'ios', channel: 'testing' } as const
+  expect(cleanUsageContext(phone)).toEqual(phone)
+  expect(healthBreakdowns(phone, 'ui_phone_computer_wait_started')).toEqual([])
+  expect(cleanUsageContext({ ...phone, channel: 'beta' })).toBeUndefined()
+})
 it('splits phone onboarding counts by release and platform, and drops a development build', () => {
   const phone = { surface: 'phone', release: '1.0.3', platform: 'android', channel: 'production' } as const
   expect(healthBreakdowns(phone, 'ui_phone_computer_wait_started')).toEqual([
@@ -50,6 +56,19 @@ it('splits phone onboarding counts by release and platform, and drops a developm
     counters: expect.objectContaining({ ui_phone_computer_wait_started: 12 }) })])
 })
 
+it('reads the relay\'s count of the phone\'s opens by release with the release\'s coverage', () => {
+  const row = (metric: string, value: number) => ({ dayUtc: new Date('2026-10-01'), metric, value })
+  const data = dailyProductHealth([
+    row('breakdown:release:phone:1.0.8:health_phone_collector_days', 25),
+    row('breakdown:release:phone:1.0.8:relay_mobile_opens', 344),
+    row('breakdown:release:phone:unknown:health_phone_collector_days', 3),
+    row('breakdown:release:phone:unknown:relay_mobile_opens', 9000),
+    row('breakdown:release:phone:1.0.8:relay_mobile_debug_opens', 15104),
+  ], new Date('2026-10-04'))
+  expect(data.breakdowns).toEqual([expect.objectContaining({ dimension: 'release', surface: 'phone', bucket: '1.0.8',
+    counters: { health_phone_collector_days: 25, relay_mobile_opens: 344 } })])
+  expect(data.sparseBreakdownsSuppressed).toBe(1)
+})
 it('suppresses sparse labels, distinguishes missing from zero, and matures first-work cohorts', () => {
   const row = (day: string, metric: string, value: number) => ({ dayUtc: new Date(day), metric, value })
   const data = dailyProductHealth([

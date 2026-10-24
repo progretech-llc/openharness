@@ -35,6 +35,25 @@ beforeEach(() => {
 })
 afterEach(() => { service.dispose(); vi.useRealTimers(); vi.restoreAllMocks(); for (const s of registry.list()) registry.removeAgent(s.agentId) })
 
+it.each(['before', 'activity', 'checkpoint'] as const)('a Swarm close preserves a personally resumed worker at %s', async phase => {
+  row.startedBy = 'agent'
+  if (phase === 'before') row.resumeOnly = true
+  if (phase === 'activity') vi.mocked(deps.activity).mockImplementation(async () => { row.resumeOnly = true; return 'idle' })
+  if (phase === 'checkpoint') vi.mocked(deps.checkpoint).mockImplementation(async () => { row.resumeOnly = true })
+  const guarded = { ...request('now'), onlyIfOriginalLaunch: true }
+  expect(await service.request(guarded)).toMatchObject({ error: expect.any(String) })
+  expect(registry.byAgent(row.agentId)).toBe(row)
+})
+
+it.each(['before', 'activity', 'checkpoint'] as const)('an expired native close lease preserves the worker at %s', async phase => {
+  const guarded = { ...request('now'), expiresAt: time + 1 }
+  if (phase === 'before') time += 2
+  if (phase === 'activity') vi.mocked(deps.activity).mockImplementation(async () => { time += 2; return 'idle' })
+  if (phase === 'checkpoint') vi.mocked(deps.checkpoint).mockImplementation(async () => { time += 2 })
+  expect(await service.request(guarded)).toMatchObject({ error: expect.any(String) })
+  expect(registry.byAgent(row.agentId)).toBe(row)
+})
+
 it('backs up an idle session before stopping, without treating a tab switch as Close', async () => {
   service.start()
   expect(deps.activity).not.toHaveBeenCalled()
@@ -202,11 +221,23 @@ it('a close of one already closed, the same conversation, is closed: asked after
   expect(await window).toEqual({ closed: true })
   expect(await service.request(request('now'))).toEqual({ closed: true })
   expect(deps.stop).toHaveBeenCalledOnce()
-  // Asking what it is doing, or to close it after its task, is about a live one: it changed.
-  expect(await service.request(request('inspect'))).toEqual({ error: 'AGENT_CHANGED' })
+  // A close after its task is about a live one: it changed.
   expect(await service.request(request('after_task'))).toEqual({ error: 'AGENT_CHANGED' })
   // Another conversation by that id was not closed.
   expect(await service.request({ ...request('now'), sessionId: 'other' })).toEqual({ error: 'AGENT_CHANGED' })
+})
+it('an inspect of one already closed, the same conversation, is closed', async () => {
+  // The terminal client inspects before every close: one asked again after a close it shows as unconfirmed (its
+  // answer lost, or the harness bound a conversation meanwhile) was answered AGENT_CHANGED, "Stop not confirmed".
+  const asked = request()
+  const closedAlready = vi.fn((r: AgentCloseRequest) => r.agentId === asked.agentId && r.sessionId === asked.sessionId && !registry.byAgent(r.agentId))
+  service.dispose()
+  service = new CloseAgentService({ ...deps, closedAlready })
+  expect(await service.request(request('now'))).toEqual({ closed: true })
+  expect(await service.request(request('inspect'))).toEqual({ closed: true })
+  expect(await service.request({ ...request('inspect'), sessionId: 'other' })).toEqual({ error: 'AGENT_CHANGED' })
+  expect(deps.stop).toHaveBeenCalledOnce()
+  expect(deps.activity).toHaveBeenCalledOnce()
 })
 it('a close now asked for while a close after the task is being planned closes now', async () => {
   let read!: (activity: CloseActivity) => void

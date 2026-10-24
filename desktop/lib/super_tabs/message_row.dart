@@ -6,9 +6,11 @@ import '../shared/theme/app_theme.dart' as grid;
 import '../shared/widgets/app_icon_button.dart';
 import '../widgets/desktop_chrome.dart';
 import '../widgets/engine_identity.dart';
-import '../widgets/workspace_account_button.dart';
+import 'attachment_chips.dart';
+import 'identity.dart';
 import 'message_text.dart';
 import 'model.dart';
+import 'pull_requests.dart';
 
 /// Presentation only. Message identity and reply routing use backend IDs.
 class SuperTabMessageRow extends StatefulWidget {
@@ -24,18 +26,29 @@ class SuperTabMessageRow extends StatefulWidget {
     this.replyAuthor,
     this.grouped = false,
     this.onReply,
+    this.onOpenAgent,
+    this.references = const {},
+    this.onOpenGroup,
   });
 
   final SuperTabMessage message;
+  final Map<int, String> references;
+  final ValueChanged<String>? onOpenGroup;
   final String author;
   final SuperTabAgent? agent;
   final String? machineName;
   final SuperTabMessage? reply;
   final String? replyAuthor;
   final bool grouped;
-  final VoidCallback? onReply;
+  final VoidCallback? onReply, onOpenAgent;
   final VoidCallback onReturnToComposer;
   final List<Widget> receipts;
+
+  // Routing notes share the message body column, including grouped messages.
+  static const horizontalInset = 24.0;
+  static const avatarSize = 28.0;
+  static const avatarGap = 12.0;
+  static const bodyInset = horizontalInset + avatarSize + avatarGap;
 
   /// Compact only a few short updates. Reports and long runs retain their own
   /// speaker identity, so scrolling through agent output does not lose the who.
@@ -88,7 +101,7 @@ class SuperTabMessageRow extends StatefulWidget {
 }
 
 class _SuperTabMessageRowState extends State<SuperTabMessageRow> {
-  final _focus = FocusNode(debugLabel: 'Super Tab message actions');
+  final _focus = FocusNode(debugLabel: 'Swarm message actions');
   bool _hovered = false, _focused = false;
 
   @override
@@ -176,35 +189,34 @@ class _SuperTabMessageRowState extends State<SuperTabMessageRow> {
               child: Stack(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: SuperTabMessageRow.horizontalInset,
+                      vertical: 6,
+                    ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         SizedBox(
-                          width: 28,
+                          width: SuperTabMessageRow.avatarSize,
                           child: widget.grouped
                               ? null
                               : ExcludeSemantics(
                                   child: Tooltip(
                                     message: _identityDetails,
-                                    child: message.fromAgent
-                                        ? EngineMark(
-                                            engine: widget.agent?.engine,
-                                            displayName: widget.author,
-                                            size: 28,
-                                          )
-                                        : AccountAvatar(
-                                            initial: accountInitial(
+                                    child: SuperTabAvatar(
+                                      identity:
+                                          '${message.author['kind']}:${message.authorId}',
+                                      name: message.fromAgent
+                                          ? widget.author
+                                          : superTabPersonName(
                                               message.authorName,
-                                              null,
                                             ),
-                                            diameter: 28,
-                                            accent: DesktopChrome.muted,
-                                          ),
+                                      size: SuperTabMessageRow.avatarSize,
+                                    ),
                                   ),
                                 ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: SuperTabMessageRow.avatarGap),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -218,17 +230,19 @@ class _SuperTabMessageRowState extends State<SuperTabMessageRow> {
                                     crossAxisAlignment:
                                         WrapCrossAlignment.center,
                                     children: [
-                                      Text(widget.author, style: authorStyle),
+                                      InkWell(
+                                        onTap: widget.onOpenAgent,
+                                        child: Text(
+                                          widget.author,
+                                          style: authorStyle,
+                                        ),
+                                      ),
                                       if (message.fromAgent)
                                         Tooltip(
                                           message: _identityDetails,
-                                          child: Text(
-                                            widget.agent == null
-                                                ? 'Agent'
-                                                : engineIdentity(
-                                                    widget.agent!.engine,
-                                                  ).label,
-                                            style: DesktopChrome.metadata(),
+                                          child: EngineMark(
+                                            engine: widget.agent?.engine,
+                                            size: 14,
                                           ),
                                         ),
                                       if (message.createdAt case final time?)
@@ -269,7 +283,27 @@ class _SuperTabMessageRowState extends State<SuperTabMessageRow> {
                                     style: DesktopChrome.metadata(),
                                   ),
                                 ),
-                              SuperTabMessageText(message.text),
+                              if (message.text.isNotEmpty)
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 960,
+                                  ),
+                                  child: SuperTabMessageText(
+                                    message.text,
+                                    references: widget.references,
+                                    onOpenGroup: widget.onOpenGroup,
+                                  ),
+                                ),
+                              if (message.attachments.isNotEmpty)
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                    top: message.text.isEmpty ? 0 : 8,
+                                  ),
+                                  child: SuperTabAttachmentChips(
+                                    message.attachments,
+                                  ),
+                                ),
+                              SuperTabPullRequestLinks(message.text),
                               ...widget.receipts,
                             ],
                           ),

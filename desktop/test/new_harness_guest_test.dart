@@ -86,6 +86,8 @@ class _GuestApp extends AppNotifier {
     String? permissionMode,
     String? codexHome,
     String? dsh,
+    String? swarmRole,
+    String? swarmSkillMode,
     GridModel? model,
     String? prompt,
     String? name,
@@ -111,6 +113,36 @@ class _GuestApp extends AppNotifier {
 }
 
 void main() {
+  test('switching from an owned machine clears its folder and uses the guest workspace', () async {
+    final app = _GuestApp();
+    app.machineStates['own'] = MachineState(
+      const Machine(
+        machineId: 'own',
+        name: 'My Mac',
+        authMode: MachineAuthMode.self,
+      ),
+    )..nodeOnline = true;
+    addTearDown(app.dispose);
+    final box = NewHarnessController(
+      app,
+      machineId: 'own',
+      engine: 'claude',
+      folder: '/Users/me/private-project',
+    );
+    addTearDown(box.dispose);
+    await pumpEventQueue();
+    app.refusedAsks.clear();
+    box.focusField(NewHarnessField.machine);
+    box.accept(box.options.singleWhere((o) => o.id == 'dee'));
+    await pumpEventQueue();
+    expect(box.asGuest, isTrue);
+    expect(box.projectLabel, 'My workspace');
+    expect(app.refusedAsks, isEmpty);
+    expect(await box.create(), isNot(NewHarnessOutcome.failed));
+    // An empty folder asks the guest daemon to use its own workspace.
+    expect(app.launches.single['folder'], '');
+  });
+
   test('a guest starts Claude Code or Codex in its own space: no project, harness, model or folder to choose', () async {
     final app = _GuestApp();
     addTearDown(app.dispose);
@@ -265,7 +297,7 @@ void main() {
     for (final code in ['GUEST_NOT_ALLOWED', 'GUEST_HARNESS']) {
       expect(
         retargetRefusalMessage(code, engineLabel: 'Claude Code'),
-        'A guest’s harness keeps the model it started with. Start a new one to use another.',
+        'On a computer shared with you, a harness keeps the model it started with. Start a new one to use another.',
       );
     }
   });
@@ -287,7 +319,7 @@ void main() {
     expect(resumed.retryable, isFalse);
     expect(
       await app.changeAgent('dee', 'mine', 'codex'),
-      'A guest’s harness keeps the agent it started with. Start a new one.',
+      'On a computer shared with you, a harness keeps the agent it started with. Start a new one.',
     );
   });
 }

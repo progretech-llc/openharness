@@ -7,12 +7,13 @@ import { machineChoices, newAgentPayload, newCommand, NewUsageError, parseNewArg
 import { SANDBOXED } from './unreachable.js'
 import { AgentClientError } from '../agentClient/daemon.js'
 
-const env = { cwd: '/work/repo', home: '/home/me' }
+// POSIX paths, read by POSIX rules wherever the spec runs: on Windows the shell's paths are read as Windows ones.
+const env = { cwd: '/work/repo', home: '/home/me', platform: 'linux' as const }
 
 describe('harness new: the words', () => {
   it('asks nothing: claude, here, on this machine', () => {
     expect(parseNewArgs([], env)).toEqual({
-      agent: 'claude', machine: null, cwd: '/work/repo', projectName: null, mode: 'auto', modeGiven: false, prompt: null, name: null, json: false,
+      agent: 'claude', machine: null, cwd: '/work/repo', projectName: null, mode: 'auto', modeGiven: false, prompt: null, name: null, repo: null, acuLimit: null, json: false,
     })
   })
 
@@ -60,6 +61,26 @@ describe('harness new: the words', () => {
     expect(parseNewArgs(['codex', '/home/me/code/auth'], env).cwd).toBe('/home/me/code/auth')
   })
 
+  it('reads the paths a Windows shell hands over as folders, not as a project name', () => {
+    const windows = { cwd: 'C:\\work\\repo', home: 'C:\\Users\\me', platform: 'win32' as const }
+    // The install job's check (B5.12): `harness new terminal $env:TEMP\harness-check-proj --json`.
+    expect(parseNewArgs(['terminal', 'C:\\Users\\me\\AppData\\Local\\Temp\\harness-check-proj', '--json'], windows))
+      .toMatchObject({ agent: 'terminal', cwd: 'C:\\Users\\me\\AppData\\Local\\Temp\\harness-check-proj', projectName: null })
+    expect(parseNewArgs(['codex', 'C:/code/api'], windows)).toMatchObject({ cwd: 'C:/code/api', projectName: null })
+    expect(parseNewArgs(['codex', '\\\\server\\share\\api'], windows).cwd).toBe('\\\\server\\share\\api')
+    expect(parseNewArgs(['codex', '.\\api'], windows).cwd).toBe('C:\\work\\repo\\api')
+    expect(parseNewArgs(['codex', '..\\other'], windows).cwd).toBe('C:\\work\\other')
+    expect(parseNewArgs(['codex', '~\\code\\auth'], windows).cwd).toBe('C:\\Users\\me\\code\\auth')
+    // `--new` never takes a path as the new project's name.
+    expect(() => parseNewArgs(['--new', 'C:\\x', 'codex'], windows)).toThrow(/not both/)
+    // Another machine resolves its own home, and may not be Windows.
+    expect(parseNewArgs(['codex', '--machine', 'mini', '~\\code\\auth'], windows).cwd).toBe('~/code/auth')
+    expect(parseNewArgs(['codex', '--machine', 'mini', 'C:\\Users\\me\\code\\auth'], windows).cwd).toBe('~/code/auth')
+    // A plain second word is still a new project, and off Windows a drive path is a name as before.
+    expect(parseNewArgs(['codex', 'my-game'], windows)).toMatchObject({ cwd: null, projectName: 'my-game' })
+    expect(parseNewArgs(['codex', 'C:\\x'], { ...env, platform: 'darwin' })).toMatchObject({ cwd: null, projectName: 'C:\\x' })
+  })
+
   it('says what is wrong instead of guessing', () => {
     for (const argv of [['a', 'b', 'c'], ['--machine'], ['--machine', '--json'], ['--machine', ' '], ['--machine', 'a', '--machine', 'b'], ['/x', '/y'], ['codex', 'game', '/x'], ['--mode', 'yolo'], ['--prompt'], ['--wat'], ['-x'], ['codex', '..'], ['codex', '--machine', 'mini', './rel']]) {
       // `codex ..` is a folder, not an error; every other row must throw.
@@ -89,6 +110,17 @@ describe('harness new: the words', () => {
     expect(fresh).toMatchObject({ engine: 'claude', projectSource: 'new', projectName: 'My-Game', permissionMode: 'auto', bypassPermission: true })
     expect(fresh).not.toHaveProperty('cwd')
     expect(newAgentPayload(parseNewArgs(['acme/blender', '.'], env), '/work/repo', 'codex')).toMatchObject({ engine: 'codex', dsh: 'acme/blender' })
+  })
+
+  it('sends a cloud coding agent its repository and ACU limit, and refuses them for any other agent (#1444)', () => {
+    const args = parseNewArgs(['devin-cloud', '--machine', 'office', '--repo', 'acme/api', '--acu-limit', '10', '--json', '--', 'reply', 'to', 'the', 'thread'], env)
+    expect(args).toMatchObject({ agent: 'devin-cloud', repo: 'acme/api', acuLimit: 10, prompt: 'reply to the thread' })
+    expect(newAgentPayload(args, null)).toMatchObject({ engine: 'devin-cloud', repositoryUrl: 'acme/api', acuLimit: 10, prompt: 'reply to the thread' })
+    expect(newAgentPayload(parseNewArgs(['devin-cloud', '--', 'x'], env), null)).not.toHaveProperty('repositoryUrl')
+    expect(() => parseNewArgs(['codex', '--repo', 'acme/api'], env)).toThrow(/--repo is for a cloud agent/)
+    expect(() => parseNewArgs(['devin-cloud', '--repo', ' ', '--', 'x'], env)).toThrow(/--repo needs a value/)
+    expect(() => parseNewArgs(['devin-cloud', '--acu-limit', '0'], env)).toThrow(/1 to 1000/)
+    expect(() => parseNewArgs(['devin-cloud', '--acu-limit', '2.5'], env)).toThrow(/1 to 1000/)
   })
 
   it('only sends a permission mode to the engines that take one', () => {

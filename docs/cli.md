@@ -28,6 +28,7 @@ works the same on a headless Linux server; the app is not required on a machine,
 | `harness grid env <grid>` | `<grid>`'s relay address and key as shell exports, through the harness's own `grid`: `eval "$(harness grid env <grid>)"` before pointing an OpenAI-compatible client at `$OPENAI_BASE_URL`. |
 | `harness flash [flags]` | Re-flash a plugged-in Harness device over USB. Flags pass straight to the flasher. |
 | `harness autonomous-device discover\|status\|list\|pair\|revoke` | Pair Autonomous OS devices found on the LAN, directly, with no relay. |
+| `harness autonomous-device addon state\|propose\|proposal` | Read what a paired device publishes, and propose what it might do ([device add-ons](autonomous-device-addons.md)). |
 
 Interactive prompts read one line from stdin with `--stdin`; `--json` switches any of them to NDJSON.
 
@@ -40,10 +41,13 @@ per-engine home directories); [`cli/README.md`](cli/README.md) has the full tabl
 
 ## Automation
 
-The app is one client of the daemon. Anything on the same computer can be another: the loopback
+The app is one client of the daemon. Any process of the same OS user can be another: the loopback
 WebSocket at `ws://127.0.0.1:18473/api/local-ws` takes a `machine_select` frame first
 (`{ machineId, localProtocolVersion: 1 }`, no `Origin` header), then request frames with a `requestId`
-and answers them with `<type>_result`. Selecting one of your other machines proxies the request
+and answers them with `<type>_result`. Since 0.4.21 every loopback request (REST and this WebSocket)
+shows the daemon's local credential, `X-Harness-Local: <credential>` (or `Authorization: Bearer
+<credential>`): the contents of the 0600 `hook-credential` file in `ADAPTER_DATA_DIR`
+(`~/.harness/cli/data`). Without it the daemon answers 401; `/api/status` then gives only its public fields. Selecting one of your other machines proxies the request
 through this daemon's link to it.
 
 What it answers: `agents_list`, `agent_create`, `agent_restart`, `agent_retarget`, `agent_delete`,
@@ -108,6 +112,12 @@ auto|ask|plan|full`, `--name`, `--new [name]` and `--json` are the rest. There i
 `harness ps`, `show`, `wait` and `close` take `--machine <name>` too, to read, wait for or close a
 harness on another of your machines: `harness new claude --machine office --name check -- …`, then
 `harness wait --machine office check` and `harness show --machine office check`.
+
+A cloud agent starts the same way: `harness new devin-cloud --machine office --repo acme/api -- <task>`.
+`--repo` takes `owner/name` or a GitHub address; Cursor Cloud needs one, Devin Cloud works without.
+`--acu-limit <n>` caps Devin Cloud's spend (5 when left out). `show` and `wait` read it from the cloud: its
+state, what it said after the last thing it was told, and its links (`links` in JSON). `harness reply <name> --
+<words>` says the person's answer, or what to do next, to a cloud harness; an agent does not.
 
 `harness whoami` says, for an agent, where it is and what it may do before it acts (`--json` gives the same as
 `context`); the top of an agent's `harness ps` begins with it, and `harness mcp` puts it in its instructions:
