@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { OpencodeReader, readOpencodeMessages } from './reader.js'
+import { lastOpencodeTurnText, opencodeMessagesToEvents } from './normalizer.js'
 import { opencodeV2TurnOpen } from '../launchControl.js'
 import type { LiveEvent } from '../../lib/normalize.js'
 
@@ -220,5 +221,59 @@ d('opencodeV2TurnOpen (OpenCode 2 session_message)', () => {
   it('is unknown for a store it cannot read or an id it will not query', async () => {
     expect(await opencodeV2TurnOpen(join(dir, 'missing.db'), SID)).toBeNull()
     expect(await opencodeV2TurnOpen(db, "x' OR 1=1")).toBeNull()
+  })
+})
+
+
+d('OpenCode 2 inline history', () => {
+  let dir = '', db = ''
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'oc-v2-read-')); db = join(dir, 'opencode.db'); schema(db)
+    run(db, 'CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT, type TEXT, seq INTEGER, time_created INTEGER, time_updated INTEGER, data TEXT);')
+  })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }) })
+  function v2(id: string, type: string, seq: number, data: unknown, sid = SID) {
+    run(db, `INSERT INTO session_message VALUES ('${id}','${sid}','${type}',${seq},${seq},${seq},'${esc(data)}');`)
+  }
+  it('reads real v2 prompts, tools and prose when legacy tables are empty', async () => {
+    v2('u1', 'user', 1, { text: 'Review the source.' })
+    v2('a1', 'assistant', 2, { content: [
+      { type: 'text', text: 'Reading the policy.' },
+      { type: 'tool', id: 'call_read', name: 'read', state: { status: 'completed', input: { path: 'policy.md' }, content: [{ type: 'text', text: 'Policy evidence.' }] }, time: { ran: 10, completed: 20 } },
+    ], finish: 'tool-calls' })
+    v2('a2', 'assistant', 3, { content: [{ type: 'text', text: 'Review saved.' }], finish: 'stop' })
+    v2('idle1', 'idle', 4, { outcome: 'succeeded' })
+    v2('other', 'user', 5, { text: 'Unrelated private prompt' }, 'ses_other')
+    const messages = await readOpencodeMessages(db, SID)
+    expect(lastOpencodeTurnText(messages)).toEqual({ userMessage: 'Review the source.', assistantText: 'Reading the policy.\n\nReview saved.' })
+    expect(messages[1].parts[1]).toMatchObject({ id: 'call_read', data: { tool: 'read', state: { output: 'Policy evidence.', time: { start: 10, end: 20 } } } })
+    const events = opencodeMessagesToEvents(messages)
+    expect(events.filter(e => e.type === 'tool_start')).toHaveLength(1)
+    expect(events.filter(e => e.type === 'tool_end')).toHaveLength(1)
+    expect(JSON.stringify(events)).not.toContain('Unrelated private prompt')
+    expect((await readOpencodeMessages(db, SID, { tc: 2, id: 'a1' })).map(m => m.id)).toEqual(['a2', 'idle1'])
+  })
+  it('supports v2-only stores without showing internal metadata as conversation', async () => {
+    run(db, 'DROP TABLE message; DROP TABLE part;')
+    v2('sys', 'system', 1, { text: 'Internal setup' })
+    v2('u1', 'user', 2, { text: 'Current question' })
+    v2('compact', 'compaction', 3, { summary: 'Internal summary' })
+    v2('a1', 'assistant', 4, { content: [{ type: 'text', text: 'Actual answer' }], finish: 'stop' })
+    expect(lastOpencodeTurnText(await readOpencodeMessages(db, SID))).toEqual({ userMessage: 'Current question', assistantText: 'Actual answer' })
+  })
+  it('streams a v2 failure and idle boundary exactly once', async () => {
+    v2('u1', 'user', 1, { text: 'Check a fixture' })
+    const events: LiveEvent[] = []
+    const reader = new OpencodeReader({ dbPath: db, sessionId: SID, onEvents: e => events.push(...e), pollMs: 20 })
+    await reader.start()
+    expect(reader.turnOpen).toBe(true)
+    v2('a1', 'assistant', 2, { content: [{ type: 'tool', id: 'failed_read', name: 'read', state: { status: 'error', input: { path: 'missing.txt' }, content: [{ type: 'text', text: 'File missing' }] } }], finish: 'tool-calls' })
+    v2('idle1', 'idle', 3, { outcome: 'failed' })
+    await wait(160); reader.stop()
+    expect(events.filter(e => e.type === 'tool_start')).toHaveLength(1)
+    expect(events.filter(e => e.type === 'tool_end')).toHaveLength(1)
+    expect(events.filter(e => e.type === 'turn_ended')).toHaveLength(1)
+    expect(reader.turnOpen).toBe(false)
+    expect(events.find(e => e.type === 'tool_end')).toMatchObject({ payload: { tool: 'Read', output: 'File missing', isError: true } })
   })
 })

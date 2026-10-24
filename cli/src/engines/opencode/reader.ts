@@ -7,8 +7,8 @@
  * state to emit incremental `LiveEvent`s into the same `emitSessionEvents` funnel the file-based
  * engines use.
  *
- * opencode 1.18.6 writes the legacy `message`/`part` tables (the newer `session_message`/`seq` tables
- * exist but are empty), so those are the primary cursor.
+ * OpenCode 1 writes `message`/`part`; OpenCode 2 writes inline content to `session_message`.
+ * Read the legacy session first, then its v2 representation when no legacy rows exist.
  */
 
 import type { LiveEvent } from '../../lib/normalize.js'
@@ -30,6 +30,50 @@ function parseJson(text: unknown): Record<string, unknown> {
 }
 
 interface Cursor { tc: number; id: string }
+
+/** Adapt v2's inline blocks to the same event/recap representation as legacy parts. */
+async function readV2Messages(dbPath: string, sessionId: string, after?: Cursor | null): Promise<OcMessage[]> {
+  const bounded = !!after && ID_RE.test(after.id) && Number.isFinite(after.tc)
+  const cond = bounded ? 'AND (time_created > ? OR (time_created = ? AND id > ?)) ' : ''
+  const params = bounded ? [sessionId, Math.trunc(after!.tc), Math.trunc(after!.tc), after!.id] : [sessionId]
+  const result = await sqliteReadAll(dbPath,
+    'SELECT id, type, time_created, data FROM session_message WHERE session_id = ? ' + cond + 'ORDER BY seq;',
+    params, { maxBuffer: MAX_BUFFER })
+  if (!result.ok) return []
+  const messages: OcMessage[] = []
+  for (const row of result.rows) {
+    const id = str(row.id), role = str(row.type), data = parseJson(row.data)
+    if (!id || !['user', 'assistant', 'idle'].includes(role)) continue
+    const parts: OcPart[] = []
+    if (role === 'user') {
+      parts.push({ id: `${id}:text`, type: 'text', data: { type: 'text', text: str(data.text) } })
+    } else if (role === 'assistant' && Array.isArray(data.content)) {
+      for (const [index, value] of data.content.entries()) {
+        const block = object(value)
+        if (!block || !str(block.type)) continue
+        let part = block
+        if (block.type === 'tool') {
+          const state = object(block.state) ?? {}, time = object(block.time) ?? {}
+          const output = Array.isArray(state.content)
+            ? state.content.map((item) => str(object(item)?.text)).filter(Boolean).join('\n')
+            : toolOutputText(state.content)
+          part = { ...block, tool: str(block.name) || str(block.tool), state: {
+            ...state, output: state.output ?? output,
+            time: { start: time.ran ?? time.created, end: time.completed },
+          } }
+        }
+        parts.push({ id: str(block.id) || `${id}:part:${index}`, type: str(block.type), data: part })
+      }
+    }
+    // v2 also records an idle boundary when an interrupted/failed turn has no final assistant.
+    if (role === 'idle' || data.finish === 'stop') {
+      parts.push({ id: `${id}:finish`, type: 'step-finish', data: { type: 'step-finish', reason: 'stop' } })
+    }
+    messages.push({ id, role: role === 'idle' ? 'assistant' : role,
+      timeCreated: Number(row.time_created) || 0, data, parts })
+  }
+  return messages
+}
 
 /**
  * Read messages (+ their parts) for one session from opencode.db.
@@ -59,9 +103,10 @@ export async function readOpencodeMessages(
   const result = await sqliteReadAll(dbPath, sql, params, { maxBuffer: MAX_BUFFER })
   if (!result.ok) {
     if (result.reason === 'missing') throw new OpencodeSqliteMissing()
-    return [] // db locked / transient — retry next tick
+    return readV2Messages(dbPath, sessionId, after)
   }
   const rows = result.rows
+  if (!rows.length) return readV2Messages(dbPath, sessionId, after)
 
   const byId = new Map<string, OcMessage>()
   const order: string[] = []
