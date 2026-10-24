@@ -102,7 +102,8 @@ export const FIRST_PROMPT_ARGS: Readonly<Record<AgentEngine, readonly string[] |
   opencode: ['--prompt'],
   // No documented first-prompt argument for an interactive launch. Not guessed.
   cursor: null,
-  pi: null,
+  // Installed pi --help: [messages...] seeds an interactive session.
+  pi: [],
   // `hermes chat --help`: "-q, --query QUERY  Query to run. On a real TTY the prompt seeds an
   // interactive session (first turn)". Measured on a live pane: the prompt is answered and the TUI
   // stays open for the next turn, which is also what lets a fork of a Hermes agent hand off.
@@ -112,7 +113,8 @@ export const FIRST_PROMPT_ARGS: Readonly<Record<AgentEngine, readonly string[] |
   muse: null,
   amp: null,
   kilo: null,
-  grok: null,
+  // Installed grok --help: [PROMPT] is the initial interactive prompt.
+  grok: [],
   agy: null,
   copilot: null,
   terminal: null,

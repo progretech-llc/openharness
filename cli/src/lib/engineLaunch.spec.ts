@@ -975,6 +975,10 @@ describe('a first prompt on launch', () => {
     expect(buildEngineCommandArgv('codex', { firstPrompt: PROMPT })).toEqual([engineBin('codex'), ...CODEX_SCREEN, PROMPT])
   })
 
+  it.each(['pi', 'grok'] as const)('seeds %s using its documented positional prompt', engine => {
+    expect(buildEngineCommandArgv(engine, { firstPrompt: PROMPT })).toEqual([engineBin(engine), PROMPT])
+  })
+
   it('hands hermes the text as the first turn of an interactive chat, after a resume', () => {
     // `hermes chat -q` on a TTY seeds the session and keeps the TUI open (measured on a live pane).
     expect(buildEngineCommandArgv('hermes', { firstPrompt: PROMPT }))
