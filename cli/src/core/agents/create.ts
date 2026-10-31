@@ -50,6 +50,7 @@ import { isWindowsHeldPane, windowsPaneLaunch } from '../../lib/windows/engineSt
 import { tmuxTooOldForSessionEnv } from '../../lib/tmuxVersion.js'
 import { prepareInstructionWrites, scmLaunchEnv } from '../../scm/scmProjects.js'
 import { mergedLaunchEnv } from './launchEnv.js'
+import { codexObservationLaunch } from '../../lib/codexObservation.js'
 import type { createPaneWatcher } from './newPane.js'
 
 /** How long creating a Model Manager waits for grid to be set up before its workspace asks grid which
@@ -103,6 +104,12 @@ export function createAgentCreator({
   gridSetup, privateGridName, dshLaunch,
 }: CreateAgentDeps) {
   const prepareNew = async (input: Parameters<CreateAgent>[0], authority: LaunchAuthority, context?: { local: boolean }): Promise<LaunchPreparation<Awaited<ReturnType<CreateAgent>>>> => {
+    let observation: ReturnType<typeof codexObservationLaunch>
+    try {
+      observation = input.codexObservation === undefined ? undefined
+        : codexObservationLaunch(input.engine, input.codexObservation?.source ?? null, input.codexObservation?.creationId)
+      if (observation && (input.resumeSessionId || input.dsh)) throw new Error('Codex observation is only for new plain Codex sessions.')
+    } catch (error) { return { ok: false, error: 'INVALID_CODEX_OBSERVATION', detail: (error as Error).message } }
     if (input.resumeSessionId) return { ok: true, dispatch: () => externalResume(input) }
     const stale = () => ({ ok: false as const, error: 'LAUNCH_AUTHORITY_CHANGED', unavailable: 'launch', detail: 'Waiting for the original launch request’s authority.' })
     if (!authority.current()) return stale()
@@ -348,7 +355,9 @@ export function createAgentCreator({
     // The first prompt is a launch option only — never part of `extraArgs`, which the registry row
     // carries into a relaunch (engineLaunch.ts, `firstPrompt`).
     const firstPrompt = prompt
-    const launchOptions = { ...(native ? { native } : {}), bypassPermission, ...(permissionMode ? { permissionMode } : {}), extraArgs: extraArgs.length ? extraArgs : undefined, installIfMissing, clearEnv, cwd, harnessNode: dsh ? true : undefined, ...(firstPrompt ? { firstPrompt } : {}), ...(launchModel ? { launchModel } : {}), terminalHint: { machineName: terminalHintMachineName() } }
+    // Observation is for this process only: the registry's relaunch extraArgs stay unchanged.
+    const launchArgs = observation ? [...extraArgs, ...observation.extraArgs] : extraArgs
+    const launchOptions = { ...(native ? { native } : {}), bypassPermission, ...(permissionMode ? { permissionMode } : {}), extraArgs: launchArgs.length ? launchArgs : undefined, installIfMissing, clearEnv, cwd, harnessNode: dsh ? true : undefined, ...(firstPrompt ? { firstPrompt } : {}), ...(launchModel ? { launchModel } : {}), terminalHint: { machineName: terminalHintMachineName() } }
     // Windows refuses a batch-file engine whose arguments cmd.exe would read (lib/windows/launch.ts), before any pane.
     let command: string[], argv: string[]
     try {
@@ -403,6 +412,7 @@ export function createAgentCreator({
     })
     if (!result.ok) return { ok: false, error: result.error, detail: result.detail }
     const { spawned, pending } = result
+    if (observation) console.log(`[agent] codex observation · ${JSON.stringify({ ...observation, agentId: pending.agentId, state: 'pane-created' })}`)
     // A terminal is ready the moment its pane is: there is no engine process to wait for, and the
     // shell exiting is the person closing it — so `remain-on-exit` comes off now, and the pane going
     // away is what removes the row (reconciler `onRemoved`), exactly as for an engine that quit.
@@ -423,7 +433,7 @@ export function createAgentCreator({
   }
   let monitorLaunch: ReturnType<CreateAgent> | undefined
   const prepare: typeof prepareNew = async (input, authority, context) => {
-    if (input.dsh !== HARNESS_MONITOR_ID || input.resumeSessionId) return prepareNew(input, authority, context)
+    if (input.codexObservation !== undefined || input.dsh !== HARNESS_MONITOR_ID || input.resumeSessionId) return prepareNew(input, authority, context)
     const stale = () => ({ ok: false as const, error: 'LAUNCH_AUTHORITY_CHANGED' })
     if (!authority.current()) return stale()
     const existing = () => registry.list().find(session => session.dsh === HARNESS_MONITOR_ID)

@@ -107,6 +107,44 @@ function setup(over: Partial<LaunchRequestDeps> = {}, launches: { create?: Creat
 }
 
 describe('agent_create, refused before any pane exists', () => {
+  const observationSource = JSON.stringify({ kind: 'factory-native-progress-v1', run_id: 'cohort-test',
+    otlp_http_endpoint: 'http://127.0.0.1:11530/v1/logs', protocol: 'json', log_user_prompt: false, lifetime_seconds: 600 })
+
+  it.each([
+    { engine: 'claude', codexObservation: observationSource },
+    { engine: 'codex', codexObservation: '{}' },
+    { engine: 'codex', codexObservation: null },
+    { engine: 'codex', codexObservation: observationSource, creationId: undefined },
+    { engine: 'codex', codexObservation: observationSource, resumeSessionId: 'existing-session' },
+    { engine: 'codex', codexObservation: observationSource, dsh: 'autonomous/harness-monitor' },
+  ])('rejects invalid observation before receipts, native probes or project preparation', async fields => {
+    const run = setup()
+    expect(await run.ask({ cwd: '/projects/test', creationId: CREATION, ...fields }))
+      .toMatchObject({ error: 'INVALID_CODEX_OBSERVATION' })
+    expect(run.create).not.toHaveBeenCalled()
+    expect(prepareProjectFolder).not.toHaveBeenCalled()
+    expect(unsupportedLaunchModelFlag).not.toHaveBeenCalled()
+    expect(await run.status({ creationId: CREATION })).toMatchObject({ state: 'missing' })
+  })
+
+  it('passes only the validated spec and real creation ID while retaining caller and permission fields', async () => {
+    const run = setup()
+    await run.ask({ engine: 'codex', cwd: '/projects/test', creationId: CREATION, codexObservation: observationSource,
+      startedBy: 'agent', bypassPermission: false, prompt: 'PRIVATE_TASK_CANARY' })
+    await vi.waitFor(() => expect(run.create).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(run.create!).mock.calls[0]![0]).toMatchObject({ engine: 'codex', cwd: '/projects/test',
+      codexObservation: { source: observationSource, creationId: CREATION }, startedBy: 'agent',
+      bypassPermission: false, prompt: 'PRIVATE_TASK_CANARY', codexHome: null, grid: null })
+  })
+
+  it('refuses guest observation without changing ordinary guest routing', async () => {
+    const run = setup()
+    const reply = vi.fn()
+    await run.requests.create({ engine: 'codex', codexObservation: observationSource }, { local: false, guest: 'guest' }, reply)
+    expect(reply).toHaveBeenCalledWith(expect.objectContaining({ error: 'INVALID_CODEX_OBSERVATION' }))
+    expect(run.create).not.toHaveBeenCalled()
+  })
+
   it('keeps a selected model pending before native preparation, then dispatches its fresh resolution once', async () => {
     vi.mocked(parseNewAgentModel).mockReturnValue({ state: 'ok', selection: { model: 'fixture-model', grid: 'fixture-grid' } })
     const grid = { networkId: 'fixture', networkName: 'Fixture', baseUrl: 'http://fixture.invalid', apiKey: 'fixture' }

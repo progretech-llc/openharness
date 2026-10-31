@@ -9,7 +9,7 @@ import { incompatibleHarnessEngine } from '../../dsh/compatibility.js'
 import { createAndRegisterPane } from '../../lib/createAgentPane.js'
 import { enginePathOverride } from '../../lib/engineBin.js'
 import { windowsAfterExit } from '../../lib/windows/engineStart.js'
-import { buildEngineLaunchArgv, engineLaunchEnv, namedAgentArgs, permissionModeFlags, refusePermissionFlagIfUnsupported, supportsFirstPrompt } from '../../lib/engineLaunch.js'
+import { buildEngineCommandArgv, buildEngineLaunchArgv, engineLaunchEnv, namedAgentArgs, permissionModeFlags, refusePermissionFlagIfUnsupported, supportsFirstPrompt } from '../../lib/engineLaunch.js'
 import { setUpWithin } from '../../lib/setUpWithin.js'
 import { writeGridConfigDir } from '../../lib/gridConfigDir.js'
 import type { GridLaunchAnswer, GridLaunchRequest } from '../../lib/gridLaunchWire.js'
@@ -165,6 +165,41 @@ describe('creating an agent', () => {
     vi.mocked(createAndRegisterPane).mockReset().mockResolvedValue({ ok: true, spawned: { runtime: { paneId: '%1' } }, pending } as never)
   })
   afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks() })
+
+  const observationSource = JSON.stringify({ kind: 'factory-native-progress-v1', run_id: 'cohort-test',
+    otlp_http_endpoint: 'http://127.0.0.1:11530/v1/logs', protocol: 'json', log_user_prompt: false, lifetime_seconds: 600 })
+  const observationInput = { source: observationSource, creationId: 'creation-observation-0001' }
+
+  it('adds observation only to the new process and journals no private prompt', async () => {
+    const run = setup()
+    await run.create(request({ engine: 'codex', codexObservation: observationInput, prompt: 'PRIVATE_TASK_CANARY' }))
+    const options = vi.mocked(buildEngineCommandArgv).mock.calls.at(-1)![1]!
+    expect(options.extraArgs).toEqual(expect.arrayContaining(['otel.log_user_prompt=false',
+      'otel.environment="factory-soak-cohort-test-creation-observation-0001"']))
+    const pane = vi.mocked(createAndRegisterPane).mock.calls.at(-1)![0]
+    expect(pane).not.toHaveProperty('codexObservation')
+    expect(pane).not.toHaveProperty('extraArgs')
+    expect(options.firstPrompt).toBe('PRIVATE_TASK_CANARY')
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('"agentId":"a1"'))
+    expect(vi.mocked(console.log).mock.calls.flat().join(' ')).not.toContain('PRIVATE_TASK_CANARY')
+  })
+
+  it.each([
+    { engine: 'claude', codexObservation: observationInput },
+    { engine: 'codex', codexObservation: null },
+    { engine: 'codex', codexObservation: {} },
+    { engine: 'codex', codexObservation: { ...observationInput, source: '{}' } },
+    { engine: 'codex', codexObservation: { ...observationInput, creationId: 'bad' } },
+    { engine: 'codex', codexObservation: observationInput, resumeSessionId: 'existing-thread' },
+    { engine: 'codex', codexObservation: observationInput, dsh: 'autonomous/harness-monitor' },
+  ])('refuses invalid recovered observation before any launch preparation', async fields => {
+    const run = setup()
+    expect(await run.create(request(fields))).toMatchObject({ ok: false, error: 'INVALID_CODEX_OBSERVATION' })
+    expect(createAndRegisterPane).not.toHaveBeenCalled()
+    expect(run.deps.prepareApiTools).not.toHaveBeenCalled()
+    expect(run.deps.blocksFolder).not.toHaveBeenCalled()
+    expect(run.deps.externalResume).not.toHaveBeenCalled()
+  })
 
   it.each(['claude', 'codex'] as const)('attaches each Swarm role before %s pane dispatch', async engine => {
     for (const role of ['lead', 'dev'] as const) {
@@ -518,6 +553,43 @@ describe('creating an agent', () => {
       vi.mocked(createAndRegisterPane).mockResolvedValueOnce({ ok: false, error: 'SPAWN_FAILED', detail: 'tmux said no' } as never)
       expect(await setup().create(request())).toEqual({ ok: false, error: 'SPAWN_FAILED', detail: 'tmux said no' })
     })
+  })
+
+  it('keeps existing monitor reuse fenced to the original launch authority', async () => {
+    const run = setup()
+    const input = request({ dsh: 'autonomous/harness-monitor' })
+    let current = false
+    const authority = { id: 'monitor', label: 'monitor', current: () => current, hold: () => {} }
+    expect(await run.create.prepare(input, authority)).toMatchObject({ ok: false, error: 'LAUNCH_AUTHORITY_CHANGED' })
+    current = true
+    vi.mocked(run.deps.registry.list).mockReturnValue([{ ...pending, dsh: input.dsh } as RegisteredSession])
+    const reused = await run.create.prepare(input, authority)
+    expect(reused.ok).toBe(true)
+    current = false
+    if (reused.ok) expect(await reused.dispatch()).toMatchObject({ ok: false, error: 'LAUNCH_AUTHORITY_CHANGED' })
+  })
+
+  it('keeps prepared monitor dispatch fenced and recognizes an intervening owner', async () => {
+    vi.mocked(installedDsh).mockReturnValue(installed() as never)
+    const run = setup()
+    const input = request({ dsh: 'autonomous/harness-monitor' })
+    let current = true
+    const authority = { id: 'monitor', label: 'monitor', current: () => current, hold: () => {} }
+    const prepared = await run.create.prepare(input, authority)
+    expect(prepared.ok).toBe(true)
+    current = false
+    if (prepared.ok) expect(await prepared.dispatch()).toMatchObject({ ok: false, error: 'LAUNCH_AUTHORITY_CHANGED' })
+    current = true
+    vi.mocked(run.deps.registry.list).mockReturnValue([{ ...pending, dsh: input.dsh } as RegisteredSession])
+    if (prepared.ok) expect(await prepared.dispatch()).toMatchObject({ ok: true, session: { agentId: 'a1' } })
+    expect(createAndRegisterPane).not.toHaveBeenCalled()
+  })
+
+  it('does not dispatch a monitor whose ordinary preparation was refused', async () => {
+    const run = setup({ createBackend: null })
+    expect(await run.create.prepare(request({ dsh: 'autonomous/harness-monitor' }),
+      { id: 'monitor', label: 'monitor', current: () => true, hold: () => {} })).toMatchObject({ ok: false, error: 'TMUX_UNAVAILABLE' })
+    expect(createAndRegisterPane).not.toHaveBeenCalled()
   })
 
   it('coalesces concurrent monitor dispatches into one pane', async () => {

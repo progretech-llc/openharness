@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { EventEmitter } from 'node:events'
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { machineChoices, newAgentPayload, newCommand, NewUsageError, parseNewArgs, resolveNewMachine, trustAsked, type NewCommandDeps, type NewSocket } from './newCommand.js'
@@ -887,5 +887,50 @@ describe('harness new: a folder the engine would ask about', () => {
     expect(await newCommand(full)).toBe(0)
     expect(full.out[1]).toBe(`Claude Code will ask the person to trust ${work} before it starts, so it waits for them until they answer `
       + '(harness wait exits 3). For new work, a project name avoids this: harness new owner/kit review -- …')
+  })
+})
+
+
+describe('opt-in Codex observation at the CLI admission boundary', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'new-observation-'))
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+  const file = join(dir, 'spec.json')
+  const source = JSON.stringify({ kind: 'factory-native-progress-v1', run_id: 'cohort-safe',
+    otlp_http_endpoint: 'http://127.0.0.1:11530/v1/logs', protocol: 'json', log_user_prompt: false, lifetime_seconds: 600 })
+  writeFileSync(file, source)
+
+  it('preserves ordinary payloads and carries only the exact bounded spec when opted in', () => {
+    const ordinary = parseNewArgs(['codex'], env)
+    expect(ordinary).not.toHaveProperty('codexObservation')
+    expect(newAgentPayload(ordinary, '/work/repo')).not.toHaveProperty('codexObservation')
+    const selected = parseNewArgs(['codex', '--codex-observation', file, '--task', 'PRIVATE_TASK'], env)
+    expect(selected.codexObservation).toBe(source)
+    expect(newAgentPayload(selected, '/work/repo')).toMatchObject({ engine: 'codex', cwd: '/work/repo',
+      codexObservation: source, prompt: 'PRIVATE_TASK', permissionMode: 'auto' })
+    expect(() => parseNewArgs(['claude', '--codex-observation', file], env)).toThrow(/only for codex/)
+    expect(() => parseNewArgs(['codex', '--codex-observation', file, '--codex-observation', file], env)).toThrow(/one Codex/)
+    expect(() => parseNewArgs(['codex', '--codex-observation'], env)).toThrow(/needs a value/)
+    expect(parseNewArgs(['codex', '--', '--codex-observation', '/not-read'], env).prompt).toBe('--codex-observation /not-read')
+  })
+
+  it('refuses invalid specs before daemon, origin, project or create operations', async () => {
+    const invalid = join(dir, 'invalid.json'); writeFileSync(invalid, '{"headers":{"Authorization":"PRIVATE_CANARY"}}')
+    let queried = false
+    const d = deps(['codex', '--codex-observation', invalid], new FakeSocket(() => null), {
+      daemonRunning: async () => { queried = true; return true }, origin: async () => { throw new Error('must not call') },
+    })
+    expect(await newCommand(d)).toBe(2)
+    expect(queried).toBe(false)
+    expect(d.err.join(' ')).not.toContain('PRIVATE_CANARY')
+  })
+
+  it('does not bypass caller quota/admission with a valid observation spec', async () => {
+    const socket = new FakeSocket(() => null)
+    const origin = { check: async () => { throw new AgentClientError('SPAWN_LIMIT', 'Four children already open.', 'OPEN_LIMIT') },
+      prompt: (text: string) => text, created: async () => null, answer: () => ({ effect: '', next: [] }) }
+    const d = deps(['codex', '--codex-observation', file, '--json'], socket, { origin: async () => origin })
+    expect(await newCommand(d)).toBe(5)
+    expect(socket.sent).toEqual([])
+    expect(d.out.join(' ')).toContain('Four children already open.')
   })
 })

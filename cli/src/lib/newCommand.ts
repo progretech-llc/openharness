@@ -12,6 +12,7 @@ import { projectFolderSlug } from './agentNames.js'
 import { permissionModeFlags } from './engineLaunch.js'
 import { projectsRoot } from './projectFolder.js'
 import { NOT_RUNNING, SANDBOXED, refused } from './unreachable.js'
+import { CodexObservationError, readCodexObservation } from './codexObservation.js'
 
 /** Engine names, so an unknown word is judged rather than cast (the shape `registry.ts` uses). */
 const ENGINE_NAMES: ReadonlySet<string> = new Set(ENGINES)
@@ -50,6 +51,8 @@ export interface NewArgs {
   /** Devin Cloud's ACU limit. */
   acuLimit: number | null
   json: boolean
+  /** Exact reviewed local JSON bytes; never an arbitrary native argument list. */
+  codexObservation?: string
 }
 
 export class NewUsageError extends Error {}
@@ -79,6 +82,7 @@ export const NEW_USAGE = [
   '                 (Cursor Cloud needs one; Devin Cloud works without)',
   '  --acu-limit <n>  the most ACUs Devin Cloud may spend (1-1000; 5 when left out)',
   '  --json         print the result as one JSON line',
+  '  --codex-observation <file>  opt-in local Codex observation spec; default launches are unchanged',
   '',
   'An agent refused (its limits, or the person has not let agents start agents) exits 5: do not retry.',
 ].join('\n')
@@ -105,6 +109,7 @@ export function parseNewArgs(argv: string[], env: { cwd: string; home: string; p
   let repo: string | null = null
   let acuLimit: number | null = null
   let json = false
+  let observationPath: string | undefined
   const value = (flag: string, index: number): string => {
     const next = argv[index + 1]
     if (next === undefined || next.startsWith('--')) throw new NewUsageError(`${flag} needs a value.`)
@@ -124,6 +129,10 @@ export function parseNewArgs(argv: string[], env: { cwd: string; home: string; p
     else if (word === '--mode') { mode = value(word, i); modeGiven = true; i++ }
     else if (word === '--prompt' || word === '--task') { prompt = value(word, i); i++ }
     else if (word === '--name') { name = value(word, i); i++ }
+    else if (word === '--codex-observation') {
+      if (observationPath !== undefined) throw new NewUsageError('Name one Codex observation spec.')
+      observationPath = value(word, i); i++
+    }
     else if (word === '--repo') {
       repo = value(word, i).trim()
       if (!repo) throw new NewUsageError('--repo needs a value.')
@@ -195,7 +204,17 @@ export function parseNewArgs(argv: string[], env: { cwd: string; home: string; p
     if (machine === null) cwd = env.cwd
     else projectName = ''
   }
-  return { agent: words[0] ?? 'claude', machine, cwd, projectName, mode, modeGiven, prompt, name, repo, acuLimit, json }
+  let codexObservation: string | undefined
+  if (observationPath !== undefined) {
+    if (words[0] !== 'codex') throw new NewUsageError('--codex-observation is only for codex.')
+    try { codexObservation = readCodexObservation(path.resolve(env.cwd, observationPath)) }
+    catch (error) {
+      if (error instanceof CodexObservationError) throw new NewUsageError(error.message)
+      throw new NewUsageError('Cannot read the local Codex observation spec.')
+    }
+  }
+  return { agent: words[0] ?? 'claude', machine, cwd, projectName, mode, modeGiven, prompt, name, repo, acuLimit, json,
+    ...(codexObservation !== undefined ? { codexObservation } : {}) }
 }
 
 /** The `agent_create` payload for [args]: the same fields the app's box sends. [baseEngine] is the
@@ -231,6 +250,7 @@ export function newAgentPayload(args: NewArgs, cwd: string | null, baseEngine = 
     ...(args.name ? { name: args.name } : {}),
     ...(args.repo ? { repositoryUrl: args.repo } : {}),
     ...(args.acuLimit !== null ? { acuLimit: args.acuLimit } : {}),
+    ...(args.codexObservation !== undefined ? { codexObservation: args.codexObservation } : {}),
     creationId: randomUUID(),
   }
 }

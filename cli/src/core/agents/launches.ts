@@ -29,6 +29,7 @@ import {
 } from '../../lib/engineLaunch.js'
 import { parseGridLaunchOverride, type GridLaunchOverride } from '../../lib/gridLaunchWire.js'
 import { parseLaunchModel } from '../../lib/launchModel.js'
+import { codexObservationLaunch } from '../../lib/codexObservation.js'
 import { parseNewAgentModel, type NewAgentModel } from '../../lib/newAgentModel.js'
 import { parseProjectFolder, prepareProjectFolder, projectsRoot, ProjectFolderError, type ProjectFolder } from '../../lib/projectFolder.js'
 import type { ScmLaunchRecord } from '../../scm/types.js'
@@ -303,6 +304,9 @@ export function createLaunchRequests({ receipts, createAgent, prepareCreate, pre
   /** Answers `agent_create`. `asker.local` says the frame came from this machine; `asker.guest`, that a guest
    *  of a machine shared with them asks (core/guestPolicy.ts). */
   const create = async (payload: Record<string, unknown>, asker: Pick<Asker, 'local' | 'guest'>, reply: Reply): Promise<void> => {
+    if (asker.guest !== undefined && payload.codexObservation !== undefined) {
+      reply({ error: 'INVALID_CODEX_OBSERVATION', detail: 'Codex observation is unavailable for guest launches.' }); return
+    }
     if (asker.guest !== undefined) { await createForGuest(payload, asker.guest, reply); return }
     const engine = payload.engine as AgentEngine | undefined
     const cwd = payload.cwd
@@ -324,6 +328,12 @@ export function createLaunchRequests({ receipts, createAgent, prepareCreate, pre
     const creationId = payload.creationId
     if (creationId !== undefined && !validCreationId(creationId)) {
       reply({ error: 'INVALID_CREATION_ID' }); return
+    }
+    try {
+      codexObservationLaunch(engine, payload.codexObservation, creationId)
+      if (payload.codexObservation !== undefined && (payload.resumeSessionId || payload.dsh)) throw new Error('Codex observation is only for new plain Codex sessions.')
+    } catch (error) {
+      reply({ error: 'INVALID_CODEX_OBSERVATION', detail: (error as Error).message }); return
     }
     if (projectFolder && (!validCreationId(creationId) || cwd !== undefined)) {
       reply({ error: 'INVALID_PROJECT_SOURCE' }); return
@@ -478,6 +488,7 @@ export function createLaunchRequests({ receipts, createAgent, prepareCreate, pre
       // Only when set: a person's create keeps the fingerprint its receipt was recorded with before the field.
       ...(payload.startedBy === 'agent' ? { startedBy: 'agent' as const } : {}),
       ...(launchModel.state === 'ok' ? { launchModel: launchModel.launchModel } : {}),
+      ...(payload.codexObservation !== undefined ? { codexObservation: { source: payload.codexObservation as string, creationId: creationId as string } } : {}),
       ...(parentAgentId ? { parentAgentId } : {}),
     }
     const fingerprintInput = model.state === 'ok' ? { ...input, modelSelection: model.selection } : input

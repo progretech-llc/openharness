@@ -174,6 +174,8 @@ export class BackendSocket {
     /** The model and effort to launch the engine with, for that session only (lib/launchModel.ts); absent when the
      *  engine should open on its own. Validated here, and only for an engine that declares the flags. */
     launchModel?: LaunchModel | null
+    /** Validated observation spec and this new launch's identity; never persisted as relaunch args. */
+    codexObservation?: import('./lib/codexObservation.js').CodexObservationInput
     /** A conversation Harness did not start, to open this harness ON: the engine resumes it, in its own
      *  folder (lib/sessionSearch/external.ts). Null for a new conversation. Shape-checked here; cli.ts
      *  checks it is one it found, not open elsewhere, and not already a harness. */
