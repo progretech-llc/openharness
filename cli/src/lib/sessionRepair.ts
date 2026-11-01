@@ -346,7 +346,7 @@ async function storeSession(
   const sessions = repairRoots(engine, opts?.codexHome)
   const found = opts?.pid && 'open' in store.live
     ? await openFileSessionOf(engine, opts.pid, sessions, cwd,
-      { expected: opts.expectedProcess, budget: opts.nativeBudget, excludedSessionId: opts.excludedSessionId })
+      { expected: opts.expectedProcess, budget: opts.nativeBudget, excludedSessionId: opts.excludedSessionId, resnapshotOnce: opts.bornOnly === true })
     : await fileEngineSession(sessions, cwd, startedAtMs, scan,
       { ...opts, ...(store.scan.from === 'head' ? { excludedDirectories: [store.scan.childFolder] } : {}) })
   // The login shell may adopt another home during any native read. Its unseen candidates

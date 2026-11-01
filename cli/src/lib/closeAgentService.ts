@@ -259,7 +259,7 @@ export class CloseAgentService {
       // whether the session has unfinished work.
       const activity = observed === 'idle' && resumeMode(s.engine) !== 'conversation' ? 'unknown' : observed
       if (!current()) return { error: 'AGENT_CHANGED' }
-      if (request.mode === 'inspect') return { activity }
+      if (request.mode === 'inspect') return { activity, ...(activity === 'unknown' && s.identityHold ? { detail: s.identityHold } : {}) }
       if (request.mode === 'after_task') {
         if (s.closePlan?.identity === target && s.closePlan.state === 'waiting') return { deferred: true }
         const updated = this.deps.registry.setClosePlan(s.agentId, { id: randomUUID(), identity: target, requestedAt: this.now(), state: 'waiting' })

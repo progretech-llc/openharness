@@ -4,7 +4,7 @@ import type { BigIntStats } from 'node:fs'
 import { sessionStoreOf } from '../engines/sessionStoreContracts.js'
 import type { AgentEngine } from '../engines/types.js'
 import { NativeEvidenceBudget, nativeUnavailable } from '../engines/kit/nativeEvidence.js'
-import { readDescriptorEvidence, descriptorPaths, descriptorKey, type DescriptorEvidence, type NativeDescriptor } from '../engines/kit/nativeDescriptors.js'
+import { readDescriptorEvidence, descriptorPaths, descriptorKey, type DescriptorEvidence, type NativeDescriptor, NativeDescriptorPoolChanged } from '../engines/kit/nativeDescriptors.js'
 import { NativePaths, nativeFileKey } from '../engines/kit/nativePaths.js'
 import { descriptorHeader } from '../engines/kit/nativeHeader.js'
 import { readProcessEvidence } from './processEvidence.js'
@@ -18,6 +18,8 @@ export interface NativeConversationSources {
 }
 export interface NativeConversationOptions {
   expected?: ProcessIdentity
+  /** Only fresh discovery may replace one unstable descriptor snapshot. */
+  resnapshotOnce?: boolean
   excludedSessionId?: string
   budget?: NativeEvidenceBudget
   sources?: NativeConversationSources
@@ -64,6 +66,21 @@ export async function nativeProcessFiles(engine: AgentEngine, pid: number, optio
 
 export async function nativeOpenFileSession(engine: AgentEngine, pid: number, roots: readonly string[], cwd: string,
   options: NativeConversationOptions = {},
+): Promise<RepairedSession | null> {
+  const budget = options.budget ?? new NativeEvidenceBudget()
+  try {
+    return await readNativeOpenFileSession(engine, pid, roots, cwd, { ...options, budget })
+  } catch (error) {
+    if (!(error instanceof NativeDescriptorPoolChanged) || !options.resnapshotOnce || !options.expected || engine !== 'codex') throw error
+    // Startup can open another FD during the first read. Discard every part of
+    // that read; the same process identity and shared deadline govern the next.
+    budget.step()
+    return readNativeOpenFileSession(engine, pid, roots, cwd, { ...options, budget })
+  }
+}
+
+async function readNativeOpenFileSession(engine: AgentEngine, pid: number, roots: readonly string[], cwd: string,
+  options: NativeConversationOptions,
 ): Promise<RepairedSession | null> {
   const store = sessionStoreOf(engine), live = store?.live
   if (!store?.first || !live || !('open' in live)) return null

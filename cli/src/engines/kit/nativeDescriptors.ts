@@ -3,6 +3,12 @@ import { opendir, readlink, stat } from 'node:fs/promises'
 import { NativeEvidenceBudget, nativeProbe, nativeUnavailable } from './nativeEvidence.js'
 import { IdentityReadUnavailable } from './identityScan.js'
 
+/** A complete pool changed; only a fresh whole lookup can replace its evidence. */
+export class NativeDescriptorPoolChanged extends IdentityReadUnavailable {
+  readonly reason = 'descriptor_pool_changed'
+  constructor() { super('the native descriptor pool changed during inspection') }
+}
+
 export interface NativeDescriptor {
   fd: string
   path: string
@@ -97,7 +103,7 @@ export async function readDescriptorEvidence(pid: number, budget: NativeEvidence
       .then(output => parseDescriptors(output, pid, budget))
   const descriptors = await read(), before = signature(descriptors)
   return { descriptors, verify: async () => {
-    if (signature(await read()) !== before) nativeUnavailable('the native descriptor pool changed during inspection')
+    if (signature(await read()) !== before) throw new NativeDescriptorPoolChanged()
   } }
 }
 
