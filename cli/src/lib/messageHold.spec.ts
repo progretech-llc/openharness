@@ -38,6 +38,20 @@ describe('what a message is not typed into', () => {
     }
   })
 
+  it('accepts a named composer while preserving dialog and popup holds', () => {
+    const named = fixture('claude-named-composer.txt')
+    expect(messageHold('claude', named)).toBeNull()
+    const header = named.split('\n').find(line => line.includes('marp-opt'))!
+    for (const name of ['permission-claude.txt', 'permission-claude-edit.txt', 'permission-claude-plan.txt']) {
+      expect(messageHold('claude', header + '\n' + fixture(name)), name).toBe('permission_open')
+    }
+    expect(messageHold('claude', header + '\n' + fixture('question-single.txt'))).toBe('question_open')
+    expect(messageHold('claude', header + '\n' + TAKEOVER.CLAUDE_TRUST_PROMPT)).toBe('trust_open')
+    expect(messageHold('claude', header + '\n' + TAKEOVER.CLAUDE_SIGN_IN)).toBe('sign_in_open')
+    expect(messageHold('claude', named.replace('❯\u00a0', '❯\u00a0/mo') + '\n /model Set the model')).toBe('popup_open')
+    expect(messageHold('claude', named + '\n' + RULE + '\n Settings: Status Config Usage')).toBe('prompt_hidden')
+  })
+
   it('is a permission prompt whose rows wrapped in a narrow pane, read by its question alone', () => {
     // Ink wraps a long row onto a line of its own, which ends the run of numbered rows the prompt is
     // otherwise read by. Claude Code's edit, write and fetch prompts then went unseen, and the Enter

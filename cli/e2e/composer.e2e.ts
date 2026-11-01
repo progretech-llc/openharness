@@ -9,7 +9,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, onTestFailed } from 'vitest'
 import { LocalClient, type Frame } from './harness/client.js'
-import { IsolatedDaemon, until } from './harness/daemon.js'
+import { IsolatedDaemon, until, type DaemonOptions } from './harness/daemon.js'
 
 type Engine = 'claude' | 'codex'
 const engines: Engine[] = ['claude', 'codex']
@@ -42,13 +42,36 @@ const refusal = (client: LocalClient, agentId: string, ms: number) =>
 describe('a message goes only into the engine\'s own composer', () => {
   let daemon: IsolatedDaemon | undefined
   afterEach(async () => { await daemon?.close(); daemon = undefined })
-  const fresh = async () => {
-    const d = await IsolatedDaemon.create()
+  const fresh = async (options: DaemonOptions = {}) => {
+    const d = await IsolatedDaemon.create(options)
     daemon = d
     onTestFailed(() => { console.log(`---- daemon log\n${d.log().split('\n').slice(-150).join('\n')}`) })
     await d.start()
     return d
   }
+
+  it('claude: a named composer accepts a message but still holds settings and command suggestions', async () => {
+    const d = await fresh({ claudeComposerTitle: 'marp-opt' })
+    const client = await LocalClient.connect(d)
+    const agent = await create(d, client, 'claude', 'named-claude')
+    await until('the named composer header', async () => (await d.capture(agent.tmuxPane)).includes(' marp-opt ─') || null, 15_000, 250)
+    await turn(client, agent.id, 'brief the measured results')
+    await turn(client, agent.id, '!config')
+    const settings = refusal(client, agent.id, 40_000)
+    client.send('message', { agentId: agent.id, content: 'must not change settings' })
+    expect(String((await settings).payload?.message)).toContain("isn't showing its prompt")
+    expect(await d.capture(agent.tmuxPane)).not.toContain('changed)')
+    await d.tmux.run('send-keys', '-t', agent.tmuxPane, 'Escape')
+    await until('the named composer after settings', async () => (await d.capture(agent.tmuxPane)).includes(' marp-opt ─') || null, 15_000, 250)
+    await d.tmux.run('send-keys', '-t', agent.tmuxPane, '/mo')
+    await until('the command suggestions', async () => (await d.capture(agent.tmuxPane)).includes('Set the AI model') || null, 15_000, 250)
+    const popup = refusal(client, agent.id, 15_000)
+    client.send('message', { agentId: agent.id, content: 'must not choose a model' })
+    expect(String((await popup).payload?.message)).toContain('Close suggestions with Esc')
+    await d.tmux.run('send-keys', '-t', agent.tmuxPane, 'Escape', 'BSpace', 'BSpace', 'BSpace')
+    await turn(client, agent.id, 'continue the briefing')
+    client.close()
+  })
 
   it.each(engines)('%s: a screen the daemon has no name for is refused, never typed into; closed, the message goes through', async (engine) => {
     // Claude Code's settings take a paste as a search and Enter changes the highlighted setting; Codex's
