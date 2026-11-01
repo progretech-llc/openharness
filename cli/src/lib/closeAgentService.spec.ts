@@ -657,3 +657,11 @@ it('waits on a real timer when no sleep is given', async () => {
   expect(await closing).toEqual({ closed: true })
   expect(Date.now() - start).toBe(1_000)
 })
+
+it('reports an identity hold without treating unknown activity as idle', async () => {
+  row.identityHold = 'Conversation identity is held: descriptor pool changed.'
+  vi.mocked(deps.activity).mockResolvedValue('unknown')
+  expect(await service.request(request('inspect'))).toEqual({ activity: 'unknown', detail: row.identityHold })
+  expect(await service.request(request())).toMatchObject({ error: 'SESSION_NOT_IDLE', activity: 'unknown' })
+  expect(deps.stop).not.toHaveBeenCalled()
+})

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nativeConversationFixture } from '../testing/nativeConversationEvidence.js'
+import { NativeDescriptorPoolChanged } from '../engines/kit/nativeDescriptors.js'
 import { NativeEvidenceBudget } from '../engines/kit/nativeEvidence.js'
 import { nativeOpenFileSession, type NativeConversationOptions, type NativeConversationSources } from './nativeConversation.js'
 
@@ -24,7 +25,7 @@ function rollout(n = 1, folder = cwd, base = home): string {
   const file = join(base, 'day', `rollout-${id(n)}.jsonl`)
   mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, header(id(n), folder)); return file
 }
-const find = (options: Pick<NativeConversationOptions, 'expected' | 'budget' | 'excludedSessionId'> = {}) =>
+const find = (options: Pick<NativeConversationOptions, 'expected' | 'budget' | 'excludedSessionId' | 'resnapshotOnce'> = {}) =>
   nativeOpenFileSession('codex', 42, [home], cwd, { sources, ...options })
 beforeEach(async () => {
   Object.defineProperty(process, 'platform', { ...platform, value: 'linux' })
@@ -272,4 +273,71 @@ it.each(['descriptors', 'process'])('rechecks %s changed during the last asynchr
     } }
   }
   await expect(find()).rejects.toMatchObject({ code: 'IDENTITY_UNAVAILABLE' })
+})
+
+const startupProcess = { pid: 42, executable: '/fixture-tools/codex', startMarker: 'Fri Oct  9 11:59:00 2026' }
+function unstableSnapshots(count: number) {
+  const read = sources.descriptors
+  const budgets: NativeEvidenceBudget[] = []
+  let attempts = 0
+  sources.descriptors = async (pid, budget) => {
+    const proof = await read(pid, budget)
+    budgets.push(budget)
+    const attempt = ++attempts
+    return { ...proof, verify: async () => {
+      await proof.verify()
+      if (attempt <= count) throw new NativeDescriptorPoolChanged()
+    } }
+  }
+  return { budgets, attempts: () => attempts }
+}
+it('replaces one complete startup snapshot under the same identity and budget', async () => {
+  const file = rollout(); held = [file]
+  const snapshots = unstableSnapshots(1), budget = new NativeEvidenceBudget()
+  await expect(find({ expected: startupProcess, resnapshotOnce: true, budget })).resolves.toEqual({ sessionId: id(), transcriptPath: file })
+  expect(snapshots.attempts()).toBeGreaterThanOrEqual(2)
+  expect(new Set(snapshots.budgets)).toEqual(new Set([budget]))
+})
+it('a second unstable startup snapshot remains held without a third attempt', async () => {
+  held = [rollout()]
+  const snapshots = unstableSnapshots(Infinity)
+  await expect(find({ expected: startupProcess, resnapshotOnce: true })).rejects.toBeInstanceOf(NativeDescriptorPoolChanged)
+  expect(snapshots.attempts()).toBe(2)
+})
+it.each([{}, { expected: startupProcess }, { resnapshotOnce: true }])('does not retry without fresh discovery and identity %j', async options => {
+  held = [rollout()]
+  const snapshots = unstableSnapshots(Infinity)
+  await expect(find(options)).rejects.toMatchObject({ code: 'IDENTITY_UNAVAILABLE', reason: 'descriptor_pool_changed' })
+  expect(snapshots.attempts()).toBe(1)
+})
+it('does not resnapshot unrelated evidence failures', async () => {
+  held = [rollout()]
+  const read = sources.descriptors; let calls = 0
+  sources.descriptors = async (...args) => { calls++; const proof = await read(...args); return { ...proof, verify: async () => { throw new Error('partial evidence') } } }
+  await expect(find({ expected: startupProcess, resnapshotOnce: true })).rejects.toThrow('partial evidence')
+  expect(calls).toBe(1)
+})
+it('retains the shared deadline rather than granting another retry budget', async () => {
+  held = [rollout()]
+  const read = sources.descriptors, budget = new NativeEvidenceBudget()
+  sources.descriptors = async (...args) => { const proof = await read(...args); return { ...proof, verify: async () => {
+    vi.spyOn(budget, 'step').mockImplementation(() => { throw new Error('deadline reached') })
+    throw new NativeDescriptorPoolChanged()
+  } } }
+  await expect(find({ expected: startupProcess, resnapshotOnce: true, budget })).rejects.toThrow('deadline reached')
+})
+it('a coherent empty startup read does not fabricate a conversation', async () => {
+  await expect(find({ expected: startupProcess, resnapshotOnce: true })).resolves.toBeNull()
+})
+
+it('rechecks process identity before using a replacement descriptor snapshot', async () => {
+  held = [rollout()]
+  unstableSnapshots(1)
+  const read = sources.processes; let attempts = 0
+  sources.processes = async (...args) => {
+    if (++attempts > 1) throw new Error('process identity changed')
+    return read(...args)
+  }
+  await expect(find({ expected: startupProcess, resnapshotOnce: true })).rejects.toThrow('process identity changed')
+  expect(attempts).toBe(2)
 })

@@ -1689,3 +1689,24 @@ it('a self-granted controller may follow up but still cannot close the original 
  expect(await delegateFollowupCommand(['manual','--controller','agent:mesh:control'],h.deps)).toBe(EXIT.refused)
  expect(await delegateFollowupCommand(['lead','--controller','agent:mesh:control'],h.deps)).toBe(EXIT.ok)
 })
+
+describe('held native follow-up inspection', () => {
+  it.each(['working', 'draft', 'needs_input'])('leaves %s workers unchanged', async activity => {
+    const d = new FakeDaemon(); d.frames = [frame('lead'), frame('kid')]
+    const h = harness(d); started(h.ledger, 'lead', 'kid'); d.screens.set('kid', [activity])
+    expect(await followupCommand(['kid', '--text-file', 'missing', '--key', 'intent', '--json'], h.deps)).toBe(EXIT.failed)
+    expect(h.out.join(' ') + h.err.join(' ')).toContain('WORKING')
+    expect(d.requests.some(r => r.type === 'agent_messages')).toBe(false)
+  })
+  it.each([undefined, 'Conversation identity is held: the native descriptor pool changed during inspection.'])('reports unavailable evidence without reading or sending input: %s', async detail => {
+    const d = new FakeDaemon(); d.frames = [frame('lead'), frame('kid')]
+    const h = harness(d); started(h.ledger, 'lead', 'kid')
+    d.extra.agent_close = () => ({ activity: 'unknown', ...(detail ? { detail } : {}) })
+    expect(await followupCommand(['kid', '--text-file', 'missing', '--key', 'intent', '--json'], h.deps)).toBe(EXIT.failed)
+    const output = h.out.join(' ') + h.err.join(' ')
+    expect(output).toContain('INSPECTION_UNAVAILABLE')
+    expect(output).toContain(detail ?? 'could not be verified')
+    expect(output).toContain('Nothing was sent')
+    expect(d.requests.some(r => r.type === 'agent_messages')).toBe(false)
+  })
+})

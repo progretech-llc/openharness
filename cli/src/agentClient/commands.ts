@@ -396,7 +396,7 @@ type Screen = 'working' | 'needs-input' | 'idle' | 'draft'
 
 /** What the screen says now (the windows' read, `agent_close` `inspect`); null when it cannot be read. `draft`:
  *  text waits in its box, the person's or a message being typed, so the agent is about to work. */
-async function inspect(t: { daemon: Daemon; frame: Frame }): Promise<Screen | null> {
+async function inspect(t: { daemon: Daemon; frame: Frame }, unavailable?: (reply: Record<string, unknown>) => void): Promise<Screen | null> {
   const reply = await t.daemon.request('agent_close', {
     agentId: t.frame.id, sessionId: t.frame.sessionId ?? '', createdAt: t.frame.createdAt ?? '', mode: 'inspect',
   }).catch(() => ({} as Record<string, unknown>))
@@ -405,7 +405,7 @@ async function inspect(t: { daemon: Daemon; frame: Frame }): Promise<Screen | nu
     case 'needs_input': return 'needs-input'
     case 'idle': return 'idle'
     case 'draft': return 'draft'
-    default: return null
+    default: unavailable?.(reply); return null
   }
 }
 
@@ -1174,7 +1174,12 @@ export function followupCommand(argv: readonly string[], deps: ClientDeps = {}):
       if(flags.has('--check')) {s.out(JSON.stringify({allowed:permitted && readAgentSettings(o.where.dataDir).agentsStartAgents,target:t.frame.id}));return EXIT.ok}
       if(!permitted || !o.caller) throw new AgentClientError('NOT_YOURS','Native follow-up control has not been granted for this worker.')
       const status=flags.has('--status')
-      if(!status && await inspect(t)!=='idle') throw new AgentClientError('WORKING','The worker is busy, has a draft, needs the person or cannot be inspected; nothing was sent.')
+      if (!status) {
+        let detail: string | undefined
+        const activity = await inspect(t, reply => { if (typeof reply.detail === 'string') detail = reply.detail })
+        if (activity === null) throw new AgentClientError('INSPECTION_UNAVAILABLE', `${detail ?? 'The current native activity could not be verified.'} Nothing was sent. An unused native chat may need its owner-authorized first input after independent empty-composer verification.`)
+        if (activity !== 'idle') throw new AgentClientError('WORKING', 'The worker is busy, has a draft or needs the person; nothing was sent.')
+      }
       const path=flags.get('--text-file')
       if(!status && typeof path!=='string') throw new UsageError(usage)
       const text=status ? undefined : readFileSync(path==='-'?0:path as string,'utf8')
