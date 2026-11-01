@@ -34,6 +34,8 @@ export interface EngineConfig {
   claudeProjectsDir: string
   codexHome: string
   claudeModel?: string
+  /** Named Claude composer header, as 2.1.316 draws it. */
+  claudeComposerTitle?: string
   /** Pause model commands at a disposable file gate for worker failure tests. */
   modelControlGate?: boolean
   /** Note every submitted prompt and hold a `!latestart` turn's start at a file gate (submission tests). */
@@ -65,6 +67,8 @@ export interface DaemonOptions {
   heapMiB?: number
   /** Models the fake engines report. */
   claudeModel?: string
+  /** Named Claude composer header, as 2.1.316 draws it. */
+  claudeComposerTitle?: string
   /** Pause model commands at a disposable file gate for worker failure tests. */
   modelControlGate?: boolean
   /** Note every submitted prompt and hold a `!latestart` turn's start at a file gate (submission tests). */
@@ -244,6 +248,7 @@ export class IsolatedDaemon {
     const config: EngineConfig = {
       port, dataDir: dirs.data, claudeProjectsDir: dirs.claudeProjects, codexHome: dirs.codexHome,
       claudeModel: options.claudeModel, codexModel: options.codexModel, modelControlGate: options.modelControlGate,
+      claudeComposerTitle: options.claudeComposerTitle,
       ...(options.preserveProcessArgs ? { preserveProcessArgs: true } : {}),
       ...(options.submissionGate ? { submissionGate: true } : {}),
       root, hookLog: join(own, 'fake-engine-hooks.log'),

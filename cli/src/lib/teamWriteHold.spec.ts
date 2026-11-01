@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
 import { teamWriteHold } from './teamWriteHold.js'
 import { CLAUDE_REWIND_CONFIRM, CLAUDE_REWIND_EMPTY, CLAUDE_REWIND_LIST, CODEX_BROWSING_SCROLLBACK } from './__fixtures__/rewindPickers.js'
@@ -32,4 +33,11 @@ it('holds a delivery while Claude Code\'s Rewind menu is open, as someone at the
   for (const screen of [CLAUDE_REWIND_LIST, CLAUDE_REWIND_CONFIRM, CLAUDE_REWIND_EMPTY]) expect(teamWriteHold('claude', screen)).toBe('team_waiting_user')
   // And Codex's scrollback browser, a pager over the whole pane, the same way as its fullscreen one.
   expect(teamWriteHold('codex', CODEX_BROWSING_SCROLLBACK)).toBe('team_waiting_user')
+})
+
+it('preserves a human draft under a named composer header', () => {
+  const named = readFileSync(new URL('./__fixtures__/claude-named-composer.txt', import.meta.url), 'utf8')
+  expect(teamWriteHold('claude', named)).toBeNull()
+  expect(teamWriteHold('claude', named.replace('❯\u00a0', '❯\u00a0keep my draft'))).toBe('team_waiting_draft')
+  expect(teamWriteHold('claude', named.replace('❯\u00a0', '❯\u00a0\n  keep my second line'))).toBe('team_waiting_draft')
 })

@@ -2,7 +2,8 @@ import type { ComposerState } from '../facets/screen.js'
 import { screenLines, typedToken } from '../kit/composer.js'
 
 /** A row of Claude Code's rule: all `─`, or `─` at both ends with text set in it. */
-const CLAUDE_RULE = /^─{3,}$|^─{3,}.*─{3,}$/
+// Claude Code 2.1.316 right-aligns a session title, leaving one trailing rule character.
+const CLAUDE_RULE = /^─{3,}$|^─{3,}.*─{3,}$|^─{3,} .+ ─$/
 
 export function composerState(capture: string): ComposerState {
   const { lines } = screenLines(capture)

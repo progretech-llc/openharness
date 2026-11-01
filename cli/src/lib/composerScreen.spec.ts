@@ -36,6 +36,17 @@ describe('Claude Code\'s prompt', () => {
     expect(composerState('claude', `\u001b[48;5;237m❯ an earlier prompt\u001b[49m\n\n⏺ its answer\n\n${CLAUDE_EMPTY}`)).toBe('ready')
   })
 
+  it('recognizes a named Claude Code 2.1.316 composer with one trailing rule character', () => {
+    const named = fixture('claude-named-composer.txt')
+    expect(composerState('claude', named)).toBe('ready')
+    expect(composerState('claude', named.replace('❯\u00a0', '❯\u00a0fix the bug'))).toBe('ready')
+    expect(composerState('claude', named.replace('❯\u00a0', '❯\u00a0/mo') + '\n /model Set the model')).toBe('popup')
+    expect(composerState('claude', named.replace('❯\u00a0', '❯\u00a0@src') + '\n src/login.ts')).toBe('popup')
+    expect(composerState('claude', named + '\n' + rule() + '\n Something new\n ❯ 1. Yes')).toBe('absent')
+    expect(composerState('claude', named.replace(/─+ marp-opt ─/, '── marp-opt ─'))).toBe('absent')
+    expect(composerState('claude', named.replace(' marp-opt ─', ' marp-opt'))).toBe('absent')
+  })
+
   it('is ready with a draft taller than the pane, its top rule and `❯` row scrolled off', () => {
     // 2.1.289 caps the prompt's height only in its fullscreen renderer; inline, the box outgrows the pane.
     const rows = Array.from({ length: 20 }, (_, index) => `  line ${index + 2} of a long draft 下一步 🎉`)

@@ -629,9 +629,11 @@ export async function run(engine, config = {}, { native = false } = {}) {
     const rest = more.map((row) => `  ${row}`)
     if (engine === 'claude') {
       const rule = `\x1b[38;5;244m${'─'.repeat(columns())}\x1b[39m`
+      const title = config.claudeComposerTitle
+      const top = title ? `\x1b[38;5;244m${'─'.repeat(Math.max(3, columns() - title.length - 3))} ${title} ─\x1b[39m` : rule
       const input = text ? `\x1b[39m❯ ${first}` : '\x1b[39m❯ \x1b[2mTry "fix lint errors"\x1b[0m'
       const popup = suggestions(text)
-      return [rule, input, ...rest, rule, ...(popup ? popupRows(popup) : [bottom?.footer ?? (text ? '' : '  \x1b[2m? for shortcuts\x1b[0m')])]
+      return [top, input, ...rest, rule, ...(popup ? popupRows(popup) : [bottom?.footer ?? (text ? '' : '  \x1b[2m? for shortcuts\x1b[0m')])]
     }
     const input = bottom?.dim ? '\x1b[2m› Ask Codex to do anything\x1b[0m'
       : text ? `\x1b[1m›\x1b[0m ${first}` : '\x1b[1m›\x1b[0m \x1b[2mAsk Codex to do anything\x1b[0m'
