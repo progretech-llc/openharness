@@ -9,6 +9,12 @@ import * as TAKEOVER from './__fixtures__/takeoverScreens.js'
 const fixture = (name: string) => readFileSync(new URL(`./__fixtures__/${name}`, import.meta.url), 'utf8')
 const RULE = '─'.repeat(100)
 
+it('allows the ready renamed Claude composer when its title leaves one trailing rule cell', () => {
+  const screen = [`${'─'.repeat(38)} factory-opt-hindsight-schema-control-01 ─`, '❯ ', RULE,
+    '  ⏸ manual mode on · ? for shortcuts'].join('\n')
+  expect(messageHold('claude', screen)).toBeNull()
+})
+
 /**
  * Claude Code's transcript view (ctrl+o), as 2.1.289 draws it: the conversation, its prompt hidden, and
  * a footer row under a dim rule: `Showing detailed transcript · ctrl+o to toggle · ctrl+e to show all`,
