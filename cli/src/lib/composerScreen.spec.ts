@@ -19,6 +19,17 @@ const codexComposer = (draft: string, footer = '  ? for shortcuts               
 const CODEX_EMPTY = codexComposer('\u001b[2mAsk Codex to do anything\u001b[0m')
 
 describe('Claude Code\'s prompt', () => {
+  it('recognizes a renamed session with only one trailing rule cell, preserving popup and dialog holds', () => {
+    // Claude 2.1.316 leaves one trailing cell when the session title fills the top rule.
+    const top = `${'─'.repeat(38)} factory-opt-hindsight-schema-control-01 ─`
+    const box = (draft: string, footer = '  ⏸ manual mode on · ? for shortcuts') => [top, `❯ ${draft}`, rule(), footer].join('\n')
+    expect(composerState('claude', box(''))).toBe('ready')
+    expect(composerState('claude', box('next task'))).toBe('ready')
+    expect(composerState('claude', box('/mo', '  /model  Set the AI model'))).toBe('popup')
+    expect(composerState('claude', `${box('')}\n${rule()}\n Permission required\n ❯ 1. Yes`)).toBe('absent')
+    expect(composerState('claude', box('').replace(top, top.slice(0, -1)))).toBe('absent')
+  })
+
   it('is ready empty, with a draft, a draft over several lines, or one in CJK and emoji', () => {
     expect(composerState('claude', CLAUDE_EMPTY)).toBe('ready')
     expect(composerState('claude', claudeBox('fix the login bug', ['']))).toBe('ready')
