@@ -113,6 +113,27 @@ describe('harness mcp', () => {
     ])
   })
 
+  it('passes explicit native launch modes without changing the omitted default', async () => {
+    const r = runner()
+    const d = deps({ run: r.run })
+    const listed = ((await answer({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, d))!.result as { tools: Array<{ name: string; inputSchema: { properties: Record<string, unknown> } }> }).tools
+    expect(listed.find((tool) => tool.name === 'harness_start')!.inputSchema.properties.mode).toMatchObject({ enum: ['auto', 'ask', 'plan'] })
+    for (const mode of ['ask', 'plan', 'auto']) {
+      await answer(call('harness_start', { task: 'bounded task', folder: '/work/app', name: 'local', mode }), d)
+      expect(parseNewArgs(r.calls.at(-1)!.argv.slice(1), { cwd: '/work', home: '/home/me' }).mode).toBe(mode)
+    }
+    await answer(call('harness_start', { task: 'bounded task', folder: '/work/app', name: 'local' }), d)
+    expect(r.calls.at(-1)!.argv).not.toContain('--mode')
+  })
+
+  it('rejects unsupported launch modes before starting a process', async () => {
+    const r = runner()
+    for (const mode of ['full', 'bypassPermissions', '', 1, null]) {
+      expect(await answer(call('harness_start', { task: 'bounded task', name: 'local', mode }), deps({ run: r.run }))).toMatchObject({ error: { code: -32602 } })
+    }
+    expect(r.calls).toEqual([])
+  })
+
   it('starts a harness in a new project Harness makes when asked for one, or when given no folder', async () => {
     // A folder was required, so Codex as an MCP client could only name one of its own: Claude Code, started in an empty
     // ~/work, waited on its trust question (a clean VM, CLI 0.3.75, 2026-10-11).
@@ -146,6 +167,8 @@ describe('harness mcp', () => {
     expect(callerEnv(deps({ env: {}, session: undefined }))).toMatchObject({ HARNESS_AGENT_SESSION: `mcp-${process.ppid}` })
     expect(callerEnv(deps({ env: { CLAUDECODE: '1', CLAUDE_CODE_SESSION_ID: 's' } }), 'claude-code')).toEqual({ CLAUDECODE: '1', CLAUDE_CODE_SESSION_ID: 's', ...via })
     expect(callerEnv(deps({ env: { CODEX_THREAD_ID: 't' } }))).toEqual({ CODEX_THREAD_ID: 't', ...via })
+    expect(callerEnv(deps({ env: { AI_AGENT: 'mak', HARNESS_AGENT_SESSION: 'intern-v2-119f' } }), 'codex')).toEqual({ AI_AGENT: 'mak', HARNESS_AGENT_SESSION: 'intern-v2-119f', ...via })
+    expect(callerEnv(deps({ env: { HARNESS_AGENT_SESSION: 'editor-session' } }), 'cursor-vscode')).toEqual({ AI_AGENT: 'cursor', HARNESS_AGENT_SESSION: 'editor-session', ...via })
     expect(callerEnv(deps({ env: { TMUX_PANE: '%1' }, inPane: true }))).toEqual({ TMUX_PANE: '%1', ...via })
   })
 

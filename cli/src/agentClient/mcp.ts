@@ -36,6 +36,7 @@ Each answer ends with Next: the call to make next. A refusal is final: do not re
  *  error there; the agent calls again for more. */
 const WAIT_DEFAULT_S = 45
 const WAIT_MAX_S = 600
+const START_MODES = ['auto', 'ask', 'plan']
 
 interface Tool {
   name: string
@@ -73,6 +74,7 @@ export const TOOLS: Tool[] = [
       project: { type: 'string', description: 'For scratch or new work, instead of folder: a name for a new project folder Harness makes (~/harnesses/<name>), which needs no approval. With neither, Harness names one.' },
       name: { type: 'string', description: 'A short name to call it by (e.g. "reviewer"). Always give one.' },
       agent: { type: 'string', enum: ['claude', 'codex'], description: 'Claude Code (default) or Codex.' },
+      mode: { type: 'string', enum: START_MODES, description: 'Native permission mode. Omit for the CLI default; ask keeps normal permission prompts, including for local Claude endpoints whose auto classifier is unavailable.' },
       machine: { type: 'string', description: 'Another of the person\'s machines, by name, to run it there.' },
     }, ['task', 'name']),
     // Starting a harness only adds one, on the person's own machines. Said so, Codex runs it without asking: a tool
@@ -88,6 +90,7 @@ export const TOOLS: Tool[] = [
       const folder = str(a.folder), project = str(a.project)
       const where = folder ? [isAbsolute(folder) || folder.startsWith('~') ? folder : resolve(cwd, folder)] : []
       return ['new', str(a.agent) || 'claude', ...(str(a.machine) ? ['--machine', str(a.machine)] : []), ...where,
+        ...(str(a.mode) ? ['--mode', str(a.mode)] : []),
         ...(project || !folder ? ['--new', ...(project ? [project] : [])] : []),
         '--name', str(a.name), '--task', typeof a.task === 'string' ? a.task : '']
     },
@@ -198,6 +201,7 @@ export async function answer(message: Message, deps: McpDeps, state: { client?: 
       const tool = tools.find((t) => t.name === message.params?.name)
       if (!tool) return fail(-32602, `Unknown tool: ${String(message.params?.name)}`)
       const args = (message.params?.arguments && typeof message.params.arguments === 'object' ? message.params.arguments : {}) as Record<string, unknown>
+      if (tool.name === 'harness_start' && args.mode !== undefined && !START_MODES.includes(str(args.mode))) return fail(-32602, 'Launch mode must be auto, ask or plan.')
       const ran = await deps.run(tool.argv(args, deps.cwd ?? process.cwd()), callerEnv(deps, state.client))
       return reply(result(tool.name, ran))
     }
@@ -215,7 +219,8 @@ export function callerEnv(deps: McpDeps, client = ''): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...(deps.env ?? process.env), [VIA_MCP_ENV]: '1' }
   if (deps.inPane || (env.CLAUDECODE === '1' && env.CLAUDE_CODE_SESSION_ID) || env.CODEX_THREAD_ID) return env
   if (!env.AI_AGENT) env.AI_AGENT = agentOfClient(client)
-  env[AGENT_SESSION_ENV] = deps.session ?? `mcp-${process.ppid}`
+  // The physical clients provide their session through SSH. Replacing it with the MCP process id orphans their workers.
+  if (!env[AGENT_SESSION_ENV]) env[AGENT_SESSION_ENV] = deps.session ?? `mcp-${process.ppid}`
   return env
 }
 

@@ -411,7 +411,7 @@ describe('Harness for agents, end to end', () => {
     expect(scratchRefused).toEqual({ isError: true, text: `Claude Code would ask the person to trust ${scratch} before it starts, and it is empty: `
       + 'for scratch or new work give a project name instead — harness_start (project: "mcpkid", …)  (Harness makes ~/harnesses/mcpkid, '
       + 'which needs no approval). Nothing was started.' })
-    const started = await server.call('harness_start', { task: 'hello from mcp', project: 'mcp-kid', name: 'mcpkid' })
+    const started = await server.call('harness_start', { task: 'hello from mcp', project: 'mcp-kid', name: 'mcpkid', mode: 'ask' })
     expect(started.isError, started.text).toBe(false)
     expect(started.text).toContain(`mcpkid on this computer: starting. Claude Code, in ${join(d.env.HOME!, 'harnesses', 'mcp-kid')}.`)
     // Its next steps are named as the tools: an MCP client may have no shell to run `harness show` in.
@@ -421,6 +421,8 @@ describe('Harness for agents, end to end', () => {
     expect(ledger).toEqual([expect.objectContaining({ by: expect.objectContaining({ agentId: expect.stringMatching(/^agent:cursor:mcp-\d+$/), name: 'Cursor' }) })])
     const waited = await server.call('harness_wait', { names: ['mcpkid'], timeout_seconds: 120 })
     expect(waited).toEqual({ text: 'mcpkid: idle · read it: harness_read (name: "mcpkid")', isError: false })
+    const child = (await client.request<{ agents: Array<{ name: string; tmuxPane: string }> }>('agents_list', {}, 30_000)).agents.find((agent) => agent.name === 'mcpkid')!
+    expect(await enginesIn(d, child.tmuxPane)).toContain('--permission-mode default')
     const read = await server.call('harness_read', { name: 'mcpkid' })
     expect(read.text).toContain('asked: [from Cursor outside Harness · ')
     expect(read.text).toContain('hello from mcp')
@@ -435,6 +437,31 @@ describe('Harness for agents, end to end', () => {
     expect(closed.text).toMatch(/^mcpkid on .+: closed\. Its conversation is kept; the person can resume it\.\nNext: nothing; you have 0 open of 4\.$/)
     server.close()
     client.close()
+  })
+
+  it('an explicit physical-client identity owns the same workers through CLI and new MCP clients', async () => {
+    const { d } = await signedIn({ agents_start_agents: true })
+    const caller = { AI_AGENT: 'mak', HARNESS_AGENT_SESSION: 'intern-test-device' }
+    const server = mcp(d, caller)
+    await server.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'codex', version: '1' } })
+    expect((await server.call('harness_start', { task: 'hello from device', project: 'device-mcp', name: 'device-mcp', mode: 'ask' })).isError).toBe(false)
+    await server.call('harness_wait', { names: ['device-mcp'], timeout_seconds: 120 })
+    server.close()
+    const other = await harness(d, '', ['close', 'device-mcp'], { ...caller, HARNESS_AGENT_SESSION: 'another-device' })
+    expect(other.code).toBe(5)
+    expect(other.out + other.err).toContain('You did not start')
+    const closed = await harness(d, '', ['close', 'device-mcp'], caller)
+    expect(closed.code, closed.out + closed.err).toBe(0)
+
+    const started = await harness(d, '', ['new', 'claude', '--new', 'device-cli', '--name', 'device-cli', '--mode', 'ask', '--', 'hello from cli'], caller)
+    expect(started.code, started.out + started.err).toBe(0)
+    const next = mcp(d, caller)
+    await next.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'codex', version: '1' } })
+    await next.call('harness_wait', { names: ['device-cli'], timeout_seconds: 120 })
+    const nativeClose = await next.call('harness_close', { name: 'device-cli' })
+    expect(nativeClose.isError, nativeClose.text).toBe(false)
+    expect(nativeClose.text).toContain('closed. Its conversation is kept')
+    next.close()
   })
 
   it('once Harness runs, Claude Code and Codex here run its commands and MCP tools without asking, the person\'s own rules kept', async () => {
