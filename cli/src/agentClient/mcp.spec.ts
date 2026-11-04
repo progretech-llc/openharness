@@ -167,6 +167,8 @@ describe('harness mcp', () => {
     expect(callerEnv(deps({ env: {}, session: undefined }))).toMatchObject({ HARNESS_AGENT_SESSION: `mcp-${process.ppid}` })
     expect(callerEnv(deps({ env: { CLAUDECODE: '1', CLAUDE_CODE_SESSION_ID: 's' } }), 'claude-code')).toEqual({ CLAUDECODE: '1', CLAUDE_CODE_SESSION_ID: 's', ...via })
     expect(callerEnv(deps({ env: { CODEX_THREAD_ID: 't' } }))).toEqual({ CODEX_THREAD_ID: 't', ...via })
+    expect(callerEnv(deps({ env: { AI_AGENT: 'mak', HARNESS_AGENT_SESSION: 'intern-v2-119f' } }), 'codex')).toEqual({ AI_AGENT: 'mak', HARNESS_AGENT_SESSION: 'intern-v2-119f', ...via })
+    expect(callerEnv(deps({ env: { HARNESS_AGENT_SESSION: 'editor-session' } }), 'cursor-vscode')).toEqual({ AI_AGENT: 'cursor', HARNESS_AGENT_SESSION: 'editor-session', ...via })
     expect(callerEnv(deps({ env: { TMUX_PANE: '%1' }, inPane: true }))).toEqual({ TMUX_PANE: '%1', ...via })
   })
 

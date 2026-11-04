@@ -219,7 +219,8 @@ export function callerEnv(deps: McpDeps, client = ''): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...(deps.env ?? process.env), [VIA_MCP_ENV]: '1' }
   if (deps.inPane || (env.CLAUDECODE === '1' && env.CLAUDE_CODE_SESSION_ID) || env.CODEX_THREAD_ID) return env
   if (!env.AI_AGENT) env.AI_AGENT = agentOfClient(client)
-  env[AGENT_SESSION_ENV] = deps.session ?? `mcp-${process.ppid}`
+  // The physical clients provide their session through SSH. Replacing it with the MCP process id orphans their workers.
+  if (!env[AGENT_SESSION_ENV]) env[AGENT_SESSION_ENV] = deps.session ?? `mcp-${process.ppid}`
   return env
 }
 

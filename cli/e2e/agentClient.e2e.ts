@@ -439,6 +439,31 @@ describe('Harness for agents, end to end', () => {
     client.close()
   })
 
+  it('an explicit physical-client identity owns the same workers through CLI and new MCP clients', async () => {
+    const { d } = await signedIn({ agents_start_agents: true })
+    const caller = { AI_AGENT: 'mak', HARNESS_AGENT_SESSION: 'intern-test-device' }
+    const server = mcp(d, caller)
+    await server.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'codex', version: '1' } })
+    expect((await server.call('harness_start', { task: 'hello from device', project: 'device-mcp', name: 'device-mcp', mode: 'ask' })).isError).toBe(false)
+    await server.call('harness_wait', { names: ['device-mcp'], timeout_seconds: 120 })
+    server.close()
+    const other = await harness(d, '', ['close', 'device-mcp'], { ...caller, HARNESS_AGENT_SESSION: 'another-device' })
+    expect(other.code).toBe(5)
+    expect(other.out + other.err).toContain('You did not start')
+    const closed = await harness(d, '', ['close', 'device-mcp'], caller)
+    expect(closed.code, closed.out + closed.err).toBe(0)
+
+    const started = await harness(d, '', ['new', 'claude', '--new', 'device-cli', '--name', 'device-cli', '--mode', 'ask', '--', 'hello from cli'], caller)
+    expect(started.code, started.out + started.err).toBe(0)
+    const next = mcp(d, caller)
+    await next.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'codex', version: '1' } })
+    await next.call('harness_wait', { names: ['device-cli'], timeout_seconds: 120 })
+    const nativeClose = await next.call('harness_close', { name: 'device-cli' })
+    expect(nativeClose.isError, nativeClose.text).toBe(false)
+    expect(nativeClose.text).toContain('closed. Its conversation is kept')
+    next.close()
+  })
+
   it('once Harness runs, Claude Code and Codex here run its commands and MCP tools without asking, the person\'s own rules kept', async () => {
     // Owner, 2026-10-12: "no asking. just do. the best ux." Codex asked before every verb (its sandbox cannot reach
     // the daemon), about four times a hand-off. The daemon writes the rules into the person's own settings at start
