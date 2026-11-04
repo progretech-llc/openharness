@@ -113,6 +113,27 @@ describe('harness mcp', () => {
     ])
   })
 
+  it('passes explicit native launch modes without changing the omitted default', async () => {
+    const r = runner()
+    const d = deps({ run: r.run })
+    const listed = ((await answer({ jsonrpc: '2.0', id: 1, method: 'tools/list' }, d))!.result as { tools: Array<{ name: string; inputSchema: { properties: Record<string, unknown> } }> }).tools
+    expect(listed.find((tool) => tool.name === 'harness_start')!.inputSchema.properties.mode).toMatchObject({ enum: ['auto', 'ask', 'plan'] })
+    for (const mode of ['ask', 'plan', 'auto']) {
+      await answer(call('harness_start', { task: 'bounded task', folder: '/work/app', name: 'local', mode }), d)
+      expect(parseNewArgs(r.calls.at(-1)!.argv.slice(1), { cwd: '/work', home: '/home/me' }).mode).toBe(mode)
+    }
+    await answer(call('harness_start', { task: 'bounded task', folder: '/work/app', name: 'local' }), d)
+    expect(r.calls.at(-1)!.argv).not.toContain('--mode')
+  })
+
+  it('rejects unsupported launch modes before starting a process', async () => {
+    const r = runner()
+    for (const mode of ['full', 'bypassPermissions', '', 1, null]) {
+      expect(await answer(call('harness_start', { task: 'bounded task', name: 'local', mode }), deps({ run: r.run }))).toMatchObject({ error: { code: -32602 } })
+    }
+    expect(r.calls).toEqual([])
+  })
+
   it('starts a harness in a new project Harness makes when asked for one, or when given no folder', async () => {
     // A folder was required, so Codex as an MCP client could only name one of its own: Claude Code, started in an empty
     // ~/work, waited on its trust question (a clean VM, CLI 0.3.75, 2026-10-11).

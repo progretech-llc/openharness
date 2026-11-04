@@ -411,7 +411,7 @@ describe('Harness for agents, end to end', () => {
     expect(scratchRefused).toEqual({ isError: true, text: `Claude Code would ask the person to trust ${scratch} before it starts, and it is empty: `
       + 'for scratch or new work give a project name instead — harness_start (project: "mcpkid", …)  (Harness makes ~/harnesses/mcpkid, '
       + 'which needs no approval). Nothing was started.' })
-    const started = await server.call('harness_start', { task: 'hello from mcp', project: 'mcp-kid', name: 'mcpkid' })
+    const started = await server.call('harness_start', { task: 'hello from mcp', project: 'mcp-kid', name: 'mcpkid', mode: 'ask' })
     expect(started.isError, started.text).toBe(false)
     expect(started.text).toContain(`mcpkid on this computer: starting. Claude Code, in ${join(d.env.HOME!, 'harnesses', 'mcp-kid')}.`)
     // Its next steps are named as the tools: an MCP client may have no shell to run `harness show` in.
@@ -421,6 +421,8 @@ describe('Harness for agents, end to end', () => {
     expect(ledger).toEqual([expect.objectContaining({ by: expect.objectContaining({ agentId: expect.stringMatching(/^agent:cursor:mcp-\d+$/), name: 'Cursor' }) })])
     const waited = await server.call('harness_wait', { names: ['mcpkid'], timeout_seconds: 120 })
     expect(waited).toEqual({ text: 'mcpkid: idle · read it: harness_read (name: "mcpkid")', isError: false })
+    const child = (await client.request<{ agents: Array<{ name: string; tmuxPane: string }> }>('agents_list', {}, 30_000)).agents.find((agent) => agent.name === 'mcpkid')!
+    expect(await enginesIn(d, child.tmuxPane)).toContain('--permission-mode default')
     const read = await server.call('harness_read', { name: 'mcpkid' })
     expect(read.text).toContain('asked: [from Cursor outside Harness · ')
     expect(read.text).toContain('hello from mcp')
