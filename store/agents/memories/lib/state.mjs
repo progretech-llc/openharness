@@ -10,6 +10,7 @@ import { homes } from './agents.mjs'
 import { readAbout } from './about.mjs'
 import { status as deliveryStatus } from './deliver.mjs'
 import { collect } from './sources.mjs'
+import { readHindsight } from './hindsight.mjs'
 import { openIndex, overview } from './sessions.mjs'
 import { encodePath, tilde } from './text.mjs'
 
@@ -96,6 +97,11 @@ export async function snapshot({ env = process.env, home, now = Date.now() } = {
   const folderKeys = new Map((sessions?.folders ?? []).map((folder) => [encodePath(folder.cwd), folder.cwd]))
   const counts = Object.fromEntries((sessions?.engines ?? []).map((row) => [row.engine, row.sessions]))
   const { memories, agents, problems } = collect({ env, home: h.home, folders: folderKeys, sessions: counts })
+  const hindsight = await readHindsight({ home: h.home, memory: h.memory, now })
+  memories.push(...hindsight.memories)
+  memories.sort((a, b) => (b.modified ?? 0) - (a.modified ?? 0) || a.id.localeCompare(b.id))
+  agents.push(...hindsight.agents)
+  problems.push(...hindsight.problems)
   const about = readAbout(h.memory)
   return {
     spec: 1,
@@ -121,7 +127,7 @@ export async function snapshot({ env = process.env, home, now = Date.now() } = {
 
 /** What changed between two snapshots, cheaply: the pane reloads only when this differs. */
 export function fingerprint(snap) {
-  const parts = [snap.about?.modified ?? 0, snap.sessions?.asks ?? 0, snap.sessions?.sessions ?? 0, JSON.stringify(snap.delivery ?? null)]
+  const parts = [snap.about?.modified ?? 0, snap.sessions?.asks ?? 0, snap.sessions?.sessions ?? 0, JSON.stringify(snap.delivery ?? null), JSON.stringify(snap.problems ?? [])]
   for (const row of snap.memories) parts.push(row.id, row.modified ?? 0, row.size)
   return parts.join('|')
 }

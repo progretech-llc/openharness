@@ -1,0 +1,15 @@
+# Memories restoration and Hindsight source
+
+The owner requested restoration of OpenHarness Memories and browsing of existing Hindsight records in its pane. The native `autonomous/memories` installer restored the package. The installed package now links to this checked source worktree. Its new source reads an explicit bank list from local, untracked settings and the loopback address from the existing Hindsight configuration. It uses GET requests only and displays provenance, connection errors and preview limits. It leaves existing agent memory providers and records intact.
+
+A live installed snapshot returned 1,362 Hindsight records across 27 nonempty banks, including 40 knowledge pages. Settings select 28 company/project and active-agent banks. Preview limits are 50 facts and 100 pages per bank, 16,000 characters per record and 2 MB overall. The pane searches loaded previews; the complete archive remains in Hindsight. Held Records banks are excluded. The API requires `detail=content` for knowledge-page bodies.
+
+The old Harness Workspaces root had moved to the staged factory workspace directory. Restoring its old root as a compatibility symlink made the existing Memories workspace and its NOTES.md reachable again. No existing workspace or session was deleted or restarted.
+
+Validation: the Memories package suite passed 105 tests. After correcting the knowledge-page detail parameter, all three focused Hindsight tests passed, including the explicit content request, read-only access, provenance, caching, held-bank exclusion, loopback enforcement and sanitized error handling. The installed snapshot independently confirmed actual facts and knowledge-page bodies. No desktop binary or model route changed. The owner's next Open click remains the final desktop interaction check.
+
+Session: owner-selected Codex session, workstation process 121723, task memories-hindsight. Source project: pt-openharness-factory-alt-dev; branch feat/memories-hindsight-20261104. Source rollback is the parent revision. Installation rollback is the native registry install; preserve local Hindsight bank settings and all workspace data. Remove the compatibility symlink only after all saved launch paths have been migrated.
+
+Grounding: current factory-baseline README, factory-expectations.html, task-ownership.md and shared working principles. RAG grounding returned factory-integration-validation(1).html and README.md passages on native memory inheritance and bridges. Native Hindsight search/list/read returned the historical Native Vectorize Hindsight adapter for Constellation page; it describes a different viewer and supplied no implementation assumptions for this change. Current package source and live API schema controlled the implementation.
+
+Humanizer review covered the complete added README section, source diagnostics and this delivery note. It preserved commands, limits and the distinction between installed verification and the owner's desktop interaction. No unresolved wording findings remain.

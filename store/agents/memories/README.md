@@ -108,3 +108,24 @@ files from here.
 Built by Autonomous for Harness, MIT. See [LICENSE](LICENSE). The memory folders belong to the agents
 that write them: Claude Code (Anthropic), Codex (OpenAI), Grok Build (xAI), Hermes (Nous Research),
 OpenClaw, Gemini CLI (Google) and Windsurf. This package only reads them.
+
+## Hindsight
+
+To show Hindsight alongside local notes, save an explicit list of bank IDs in
+`~/.harness/memory/hindsight.json`:
+
+```json
+{"banks":["coding-agent::my-project"]}
+```
+
+Memories reads the local API address and optional API key from
+`~/.hindsight/coding-agent.json`. It accepts only a loopback HTTP address and
+never sends Hindsight credentials to the browser. Each selected bank appears as
+a project under Hindsight, with its recent facts and knowledge pages.
+
+The preview refreshes once a minute while the pane is open. It includes up to
+50 recent facts and 100 knowledge pages per bank, within a shared 2 MB budget.
+Long records show a shortened preview. Search covers the loaded records; use
+Hindsight for the full archive. Connection failures appear in the pane.
+Memories only reads Hindsight. It never imports, changes or deletes its records.
+Held Records banks are excluded.
