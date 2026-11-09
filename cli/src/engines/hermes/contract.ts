@@ -52,7 +52,7 @@ export const HERMES_SOURCE: StoreSourceRule = {
   id: /^(?:local-[0-9a-f]{64}|[0-9]{8}_[0-9]{6}_[0-9a-fA-F]{4,16})$/,
   query: `SELECT ${HERMES_SOURCE_SQL} AS source FROM sessions WHERE id = ? LIMIT 2;`,
   column: 'source',
-  interactive: ['', 'cli', 'tui'],
+  interactive: ['', 'cli', 'tui', 'local'],
   maxBuffer: 1 << 20,
 }
 

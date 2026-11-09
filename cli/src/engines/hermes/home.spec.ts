@@ -20,6 +20,7 @@ import {
   hermesHomeFromEnv,
   listHermesHomes,
 } from './home.js'
+import { hermesSessionSource, isHermesSubagentSession } from './reader.js'
 
 const hasSqlite = (() => {
   try { execFileSync('sqlite3', ['-version'], { stdio: 'ignore' }); return true } catch { return false }
@@ -101,5 +102,16 @@ d('hermes homes', () => {
     expect(hermesHomeFromEnv('hermes', { HERMES_HOME: 'relative/path' }, '/home/u/.hermes')).toBeNull()
     expect(hermesHomeFromEnv('hermes', { HERMES_HOME: '/bad\u0000path' }, '/home/u/.hermes')).toBeNull()
     expect(hermesHomeFromEnv('codex', { HERMES_HOME: '/home/u/.hermes/profiles/demo' }, '/home/u/.hermes')).toBeNull()
+  })
+
+  it('verifies local native sources while keeping delegated sessions separate', async () => {
+    const local = `local-${'ab'.repeat(32)}`
+    const child = `local-${'cd'.repeat(32)}`
+    makeHome(root, [])
+    execFileSync('sqlite3', [hermesDbPath(root),
+      `INSERT INTO sessions VALUES ('${local}','local',NULL); INSERT INTO sessions VALUES ('${child}','subagent',NULL);`])
+    expect(await hermesSessionSource(hermesDbPath(root), local)).toBe('local')
+    expect(await isHermesSubagentSession(hermesDbPath(root), local)).toBe(false)
+    expect(await isHermesSubagentSession(hermesDbPath(root), child)).toBe(true)
   })
 })
