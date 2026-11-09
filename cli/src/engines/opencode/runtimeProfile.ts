@@ -63,7 +63,8 @@ function squash(value: string): string {
  */
 export function opencodeModelTarget(id: string): OpencodeModelTarget | null {
   const trimmed = id.trim()
-  if (!/^[a-z0-9][\w.-]*\/[\w./-]+$/i.test(trimmed)) return null
+  // Ollama's native model tags include a colon, e.g. ollama/gpt-oss:20b.
+  if (!/^[a-z0-9][\w.-]*\/[\w.:/-]+$/i.test(trimmed)) return null
   const slash = trimmed.indexOf('/')
   const provider = trimmed.slice(0, slash)
   const model = trimmed.slice(slash + 1)

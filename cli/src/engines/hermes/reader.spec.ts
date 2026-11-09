@@ -55,6 +55,15 @@ d('HermesReader (sqlite3 CLI)', () => {
     expect(await readHermesMessages(db, "x'; DROP TABLE messages;--")).toEqual([])
   })
 
+  it('reads a native local session without confusing its history with another session', async () => {
+    const local = `local-${'ab'.repeat(32)}`
+    insert(db, { id: 1, role: 'user', content: 'another session' })
+    run(db, `INSERT INTO messages (id, session_id, role, content, finish_reason, timestamp) VALUES (2, '${local}', 'assistant', 'checkpoint saved', 'stop', 2)`)
+    expect(await readHermesMessages(db, local)).toMatchObject([
+      { id: 2, role: 'assistant', content: 'checkpoint saved', finishReason: 'stop' },
+    ])
+  })
+
   it("reads an editor's (ACP) session, whose id is a uuid", async () => {
     const acp = '3f2a9c1e-8b4d-4e6f-9a1b-2c3d4e5f6a7b'
     run(db, `INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (1, '${acp}', 'user', 'hi', 1)`)

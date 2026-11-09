@@ -21,7 +21,7 @@ export function hermesDbPath(home: string): string {
  * it decides whether a hook's session is a pane's own, and editors' sessions never are.
  */
 export const HERMES_HISTORY_ID_RE =
-  /^(?:[0-9]{8}_[0-9]{6}_[0-9a-fA-F]{4,16}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/
+  /^(?:local-[0-9a-f]{64}|[0-9]{8}_[0-9]{6}_[0-9a-fA-F]{4,16}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/
 
 /**
  * Hermes keeps one store per home: `hermes -p <name>` runs against `~/.hermes/profiles/<name>`, with its own
@@ -47,7 +47,9 @@ export const HERMES_SOURCE_SQL = "CASE WHEN typeof(source) = 'text' AND length(C
  * gateway): an editor's sessions, never a pane's own, read as one.
  */
 export const HERMES_SOURCE: StoreSourceRule = {
-  id: /^[0-9]{8}_[0-9]{6}_[0-9a-fA-F]{4,16}$/,
+  // Native Hermes exports local-<64 lowercase hex> IDs after its November update. Accepting
+  // that shape still requires the store's interactive source; a child never gains pane authority.
+  id: /^(?:local-[0-9a-f]{64}|[0-9]{8}_[0-9]{6}_[0-9a-fA-F]{4,16})$/,
   query: `SELECT ${HERMES_SOURCE_SQL} AS source FROM sessions WHERE id = ? LIMIT 2;`,
   column: 'source',
   interactive: ['', 'cli', 'tui'],

@@ -80,6 +80,9 @@ d('hermes homes', () => {
     const acp = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d'
     execFileSync('sqlite3', [hermesDbPath(demo), `INSERT INTO sessions VALUES ('${acp}','acp',NULL);`])
     expect(await findHermesHomeForSession(acp, homes)).toBe(demo)
+    const local = `local-${'ab'.repeat(32)}`
+    execFileSync('sqlite3', [hermesDbPath(demo), `INSERT INTO sessions VALUES ('${local}','cli',NULL);`])
+    expect(await findHermesHomeForSession(local, homes)).toBe(demo)
     // The one the old code could not see: its row is in the profile's store, not the default one.
     expect(await findHermesHomeForSession(PROFILE_SESSION, homes)).toBe(demo)
     // A session no store has yet — the caller falls back to the default rather than guessing.
