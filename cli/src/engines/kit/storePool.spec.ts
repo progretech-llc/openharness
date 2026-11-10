@@ -331,6 +331,29 @@ it.each(['main', 'wal', 'journal', 'aggregate'])('bounds %s database bytes befor
   expect(control.queries).toEqual([])
 })
 
+it('reads indexed identity from a large history store without scanning its payload', async () => {
+  const path = store(home)
+  truncateSync(path, 70 * 1024 * 1024)
+  const rows = await pool(declared, home, {
+    sql: 'SELECT id, source FROM sessions WHERE id = ? LIMIT 2', params: [id],
+    maxRows: 2, maxBuffer: 4096, columns: ['id', 'source'], pointKey: 'id',
+  })
+  expect(rows.map(value => value.row)).toEqual([{ id, source: 'cli' }])
+  expect(control.queries).toHaveLength(1)
+  await expect(find()).rejects.toThrow('64 MiB read limit')
+})
+
+it('retains the journal cap for an indexed identity lookup', async () => {
+  const path = store(home)
+  writeFileSync(`${path}-wal`, '')
+  truncateSync(`${path}-wal`, 65 * 1024 * 1024)
+  await expect(pool(declared, home, {
+    sql: 'SELECT id FROM sessions WHERE id = ? LIMIT 2', params: [id],
+    maxRows: 2, maxBuffer: 4096, columns: ['id'], pointKey: 'id',
+  })).rejects.toThrow('64 MiB read limit')
+  expect(control.queries).toEqual([])
+})
+
 it('refuses an oversized unindexed sessions table after a bounded prefix without sorting it', async () => {
   const path = store(home, [])
   update(path, `WITH RECURSIVE rows(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM rows WHERE n<8193)

@@ -87,6 +87,7 @@ export async function readStorePool(
   const stores: Store[] = []
   const seen = new Map<string, Store>()
   let bytes = 0
+  let journalBytes = 0
   for (const home of homes) {
     const path = declared.store(home)
     const start = evidence.length
@@ -101,7 +102,12 @@ export async function readStorePool(
     const alias = seen.get(identity)
     if (alias) { alias.aliases.push(home); continue }
     bytes += main.size + (wal?.size ?? 0) + (journal?.size ?? 0)
-    if (bytes > MAX_POOL_BYTES) unavailable('the native store pool exceeds the 64 MiB read limit')
+    // Indexed identity queries do not load the complete history database. Their ordinary-table
+    // and leading-primary-key checks below are mandatory. Discovery and journal work stay capped.
+    journalBytes += (wal?.size ?? 0) + (journal?.size ?? 0)
+    if ((!query.pointKey && bytes > MAX_POOL_BYTES) || journalBytes > MAX_POOL_BYTES) {
+      unavailable('the native store pool exceeds the 64 MiB read limit')
+    }
     const store = { home, aliases: [home], path, files: evidence.slice(start) }
     seen.set(identity, store)
     stores.push(store)
@@ -121,7 +127,7 @@ export async function readStorePool(
     }
     // A view, virtual table or generated control column can execute unrelated, unbounded work.
     // Repair scans a bounded prefix of this ordinary table, with no full-table sort. Point reads
-    // require the declared key to lead the primary index. The shared file cap bounds page input.
+    // require the declared key to lead the primary index. Discovery keeps the shared file cap; indexed point reads keep the journal cap and bounded result.
     const schema = await read('SELECT type, substr(sql, 1, 16385) AS sql FROM sqlite_schema WHERE name = ? LIMIT 2', ['sessions'], 20_000)
     if (schema.length !== 1 || schema[0].type !== 'table' || typeof schema[0].sql !== 'string'
       || schema[0].sql.length > 16384 || !/^CREATE\s+TABLE\s/i.test(schema[0].sql)) unavailable('the native session table schema is unavailable')
