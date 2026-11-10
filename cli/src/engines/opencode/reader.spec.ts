@@ -222,3 +222,60 @@ d('opencodeV2TurnOpen (OpenCode 2 session_message)', () => {
     expect(await opencodeV2TurnOpen(db, "x' OR 1=1")).toBeNull()
   })
 })
+
+d('OpenCode 2 transcript compatibility', () => {
+  let dir = ''
+  let db = ''
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'oc-v2-reader-')); db = join(dir, 'opencode.db')
+    run(db, 'CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, type TEXT NOT NULL, seq INTEGER NOT NULL, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL, data TEXT NOT NULL);')
+  })
+  afterEach(() => { rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }) })
+  const row = (id: string, seq: number, type: string, data: Record<string, unknown>, sid = SID): void =>
+    run(db, `INSERT INTO session_message VALUES ('${id}','${sid}','${type}',${seq},10,10,'${esc(data)}');`)
+
+  it('reads native user/text/tool content in seq order, even without legacy tables', async () => {
+    row('z_user', 1, 'user', { text: 'inspect the candidate', files: [], agents: [] })
+    row('a_tool', 2, 'assistant', { finish: 'tool-calls', content: [
+      { type: 'tool', id: 'call_read', name: 'read', state: { status: 'completed', input: { filePath: '/fixture/app.py' }, content: [{ type: 'text', text: 'real output' }] } },
+      { type: 'text', text: 'Reviewed source.' },
+    ] })
+    row('other', 1, 'user', { content: 'unrelated' }, 'ses_other')
+    const messages = await readOpencodeMessages(db, SID)
+    expect(messages.map((m) => m.id)).toEqual(['z_user', 'a_tool'])
+    expect(messages[0].parts[0].data.text).toBe('inspect the candidate')
+    expect(messages[1].parts[0]).toMatchObject({ id: 'call_read', type: 'tool', data: { tool: 'read', state: { output: 'real output', status: 'completed' } } })
+    const after = await readOpencodeMessages(db, SID, { id: 'z_user', tc: 10 })
+    expect(after.map((m) => m.id)).toEqual(['a_tool'])
+  })
+
+  it('falls back when legacy tables exist but this session only has v2 rows', async () => {
+    schema(db)
+    row('u', 1, 'user', { content: 'native prompt' })
+    expect((await readOpencodeMessages(db, SID))[0].parts[0].data.text).toBe('native prompt')
+  })
+
+  it('opens active v2 work and closes only at native idle, retaining failure outcome', async () => {
+    row('z_user', 1, 'user', { content: [{ type: 'text', text: 'work' }] })
+    row('a_assistant', 2, 'assistant', { finish: 'stop', content: [{ type: 'text', text: 'partial' }] })
+    const events: LiveEvent[] = []
+    const reader = new OpencodeReader({ dbPath: db, sessionId: SID, onEvents: (e) => events.push(...e), pollMs: 10 })
+    try {
+      await reader.start()
+      expect(reader.turnOpen).toBe(true)
+      run(db, `UPDATE session_message SET data='${esc({ content: [{ type: 'text', text: 'partial update' }] })}' WHERE id='a_assistant';`)
+      await wait(100)
+      expect(events.filter((e) => e.type === 'text_delta')).toEqual([{ type: 'text_delta', payload: { content: ' update' } }])
+      row('b_idle', 3, 'idle', { outcome: 'interrupted' })
+      await wait(100)
+      expect(reader.turnOpen).toBe(false)
+      expect(events.filter((e) => e.type === 'turn_started')).toHaveLength(1)
+      expect(events.filter((e) => e.type === 'turn_ended')).toHaveLength(1)
+      expect((await readOpencodeMessages(db, SID)).at(-1)?.data.outcome).toBe('interrupted')
+    } finally { reader.stop() }
+    const quiet: LiveEvent[] = []
+    const reattached = new OpencodeReader({ dbPath: db, sessionId: SID, onEvents: (e) => quiet.push(...e), pollMs: 600000 })
+    await reattached.start(); reattached.stop()
+    expect(quiet).toEqual([])
+  })
+})

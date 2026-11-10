@@ -8,7 +8,7 @@
  * engines use.
  *
  * opencode 1.18.6 writes the legacy `message`/`part` tables (the newer `session_message`/`seq` tables
- * exist but are empty), so those are the primary cursor.
+ * exist but are empty). OpenCode 2 writes session_message instead; read either store format.
  */
 
 import type { LiveEvent } from '../../lib/normalize.js'
@@ -59,9 +59,10 @@ export async function readOpencodeMessages(
   const result = await sqliteReadAll(dbPath, sql, params, { maxBuffer: MAX_BUFFER })
   if (!result.ok) {
     if (result.reason === 'missing') throw new OpencodeSqliteMissing()
-    return [] // db locked / transient — retry next tick
+    return readV2Messages(dbPath, sessionId, bounded ? after : null)
   }
   const rows = result.rows
+  if (rows.length === 0) return readV2Messages(dbPath, sessionId, bounded ? after : null)
 
   const byId = new Map<string, OcMessage>()
   const order: string[] = []
@@ -82,6 +83,48 @@ export async function readOpencodeMessages(
     }
   }
   return order.map((id) => byId.get(id)!)
+}
+
+/** OpenCode 2 leaves the legacy tables empty. Its seq, not wall-clock/id ordering, is authoritative.
+ * Keep the cursor at user/idle boundaries so updates to an in-flight assistant are read again.
+ */
+async function readV2Messages(dbPath: string, sessionId: string, after?: Cursor | null): Promise<OcMessage[]> {
+  const result = await sqliteReadAll(dbPath,
+    "SELECT id, type, time_created, data FROM session_message WHERE session_id = ? " +
+    "AND type IN ('user','assistant','idle') " +
+    (after ? 'AND seq > COALESCE((SELECT seq FROM session_message WHERE session_id = ? AND id = ?), -1) ' : '') +
+    'ORDER BY seq;', after ? [sessionId, sessionId, after.id] : [sessionId], { maxBuffer: MAX_BUFFER })
+  if (!result.ok) {
+    if (result.reason === 'missing') throw new OpencodeSqliteMissing()
+    return []
+  }
+  return result.rows.map((row): OcMessage => {
+    const id = str(row.id)
+    const data = parseJson(row.data)
+    const type = str(row.type)
+    const content = type === 'user' && typeof data.text === 'string'
+      ? [{ type: 'text', text: data.text }]
+      : typeof data.content === 'string' ? [{ type: 'text', text: data.content }] : data.content
+    const parts: OcPart[] = (Array.isArray(content) ? content : []).flatMap((value, index) => {
+      const part = object(value)
+      if (!part) return []
+      const partId = str(part.id) || `${id}_p_${index}`
+      if (part.type === 'tool') {
+        const state = object(part.state) ?? {}
+        const blocks = state.content
+        const output = state.output ?? (Array.isArray(blocks)
+          ? blocks.map((block) => toolOutputText(block)).filter(Boolean).join('\n') : blocks)
+        return [{ id: partId, type: 'tool', data: { ...part, tool: part.name ?? part.tool,
+          state: { ...state, output } } }]
+      }
+      return [{ id: partId, type: str(part.type), data: part }]
+    })
+    // Assistant finish=stop can precede native tool execution. Only idle closes the native turn;
+    // outcome remains in message data so interrupted/failed turns do not masquerade as acceptance.
+    if (type === 'idle') parts.push({ id: `${id}_idle`, type: 'step-finish', data: { reason: 'stop', outcome: data.outcome } })
+    return { id, role: type === 'user' ? 'user' : 'assistant', timeCreated: Number(row.time_created) || 0,
+      data: { ...data, role: type === 'user' ? 'user' : 'assistant' }, parts }
+  })
 }
 
 export class OpencodeSqliteMissing extends Error {
