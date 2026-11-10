@@ -21,7 +21,11 @@ beforeAll(() => {
 afterEach(async () => { client?.close(); await daemon?.close(); client = undefined; daemon = undefined })
 afterAll(() => { if (scratch) rmSync(scratch, { recursive: true, force: true }) })
 
-it.each(['missing', 'stalled'] as const)('keeps Hermes admission pending and core ready with %s optional code, then recovers the complete store pool', async mode => {
+it.each([
+  { mode: 'missing', local: false },
+  { mode: 'stalled', local: false },
+  { mode: 'missing', local: true },
+] as const)('keeps Hermes admission pending and core ready with $mode optional code (local=$local), then recovers the complete store pool', async ({ mode, local }) => {
   const text = readFileSync(bundle, 'utf8')
   const lean = readLeanBundle(Buffer.from(text))!
   const files = Object.fromEntries([...lean.files].map(([name, value]) => [name, value.toString('utf8')]))
@@ -29,7 +33,7 @@ it.each(['missing', 'stalled'] as const)('keeps Hermes admission pending and cor
   expect(chunks).toHaveLength(1)
   if (mode === 'missing') delete files[chunks[0]!]
   else files[chunks[0]!] = "console.error('[fixture] Hermes reader stalled'); await new Promise(() => {});\n"
-  const scriptPath = join(scratch, mode, 'cli.js')
+  const scriptPath = join(scratch, `${mode}-${local}`, 'cli.js')
   mkdirSync(dirname(scriptPath), { recursive: true })
   writeFileSync(scriptPath, withLean(text, files), { mode: 0o755 })
   const d = daemon = await IsolatedDaemon.create({ scriptPath })
@@ -64,7 +68,9 @@ setInterval(() => {}, 1000)
     expect(await response.json()).toEqual({ pending: true })
   }
   const row = async () => (await c.request('agents_list', {})).agents.find((agent: { id: string }) => agent.id === agentId)
-  const child = '20261009_120000_aaaaaa', own = '20261009_120001_bbbbbb'
+  const child = local ? `local-${'a'.repeat(64)}` : '20261009_120000_aaaaaa'
+  const own = local ? `local-${'b'.repeat(64)}` : '20261009_120001_bbbbbb'
+  const ownSource = local ? 'local' : 'cli'
   await hook(own)
   await until('an explicit source hold', () => d.log().includes('held · Hermes session source is unavailable') || null, 10_000, 100)
   // A delegated hook on the same pane must not erase its parent's held intent.
@@ -82,7 +88,7 @@ setInterval(() => {}, 1000)
   db.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT, cwd TEXT, started_at REAL);'
     + 'CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, tool_call_id TEXT, tool_calls TEXT, tool_name TEXT, finish_reason TEXT, reasoning TEXT);')
   const insert = db.prepare('INSERT INTO sessions VALUES (?, ?, ?, 0)')
-  insert.run(child, 'tool', cwd); insert.run(own, 'cli', cwd); db.close()
+  insert.run(child, 'tool', cwd); insert.run(own, ownSource, cwd); db.close()
   const profile = join(d.env.HERMES_HOME, 'profiles', 'later')
   mkdirSync(profile, { recursive: true })
   const otherStore = join(profile, 'state.db')
@@ -94,7 +100,7 @@ setInterval(() => {}, 1000)
   rmSync(otherStore)
   const competing = new DatabaseSync(otherStore)
   competing.exec('CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT, cwd TEXT, started_at REAL)')
-  competing.prepare('INSERT INTO sessions VALUES (?, ?, ?, 0)').run(own, 'cli', cwd)
+  competing.prepare('INSERT INTO sessions VALUES (?, ?, ?, 0)').run(own, ownSource, cwd)
   competing.close()
   await until('automatic source recheck to reject the child', () => d.log().includes('ignored · hermes_subagent') || null, 10_000, 100)
   await until('complete but ambiguous parent pool', () => d.log().includes('ambiguous across homes') || null, 10_000, 100)

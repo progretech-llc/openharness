@@ -21,7 +21,7 @@ export function hermesDbPath(home: string): string {
  * it decides whether a hook's session is a pane's own, and editors' sessions never are.
  */
 export const HERMES_HISTORY_ID_RE =
-  /^(?:[0-9]{8}_[0-9]{6}_[0-9a-fA-F]{4,16}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/
+  /^(?:local-[0-9a-fA-F]{64}|[0-9]{8}_[0-9]{6}_[0-9a-fA-F]{4,16}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/
 
 /**
  * Hermes keeps one store per home: `hermes -p <name>` runs against `~/.hermes/profiles/<name>`, with its own
@@ -44,13 +44,14 @@ export const HERMES_SOURCE_SQL = "CASE WHEN typeof(source) = 'text' AND length(C
  * points into `/tmp`, but source is the explicit marker). Read by the kit (kit/storeSource.ts) in the hook server.
  *
  * The ids are the CLI's and the gateway's, `YYYYMMDD_HHMMSS_<hex>` (6 hex chars for the CLI and the TUI, 8 for the
- * gateway): an editor's sessions, never a pane's own, read as one.
+ * gateway). The November CLI also persists `local-<64hex>` with source `local`; rejecting that
+ * native shape left a visibly working Hermes pane unknown with no tools. Editor UUIDs remain history-only.
  */
 export const HERMES_SOURCE: StoreSourceRule = {
-  id: /^[0-9]{8}_[0-9]{6}_[0-9a-fA-F]{4,16}$/,
+  id: /^(?:local-[0-9a-fA-F]{64}|[0-9]{8}_[0-9]{6}_[0-9a-fA-F]{4,16})$/,
   query: `SELECT ${HERMES_SOURCE_SQL} AS source FROM sessions WHERE id = ? LIMIT 2;`,
   column: 'source',
-  interactive: ['', 'cli', 'tui'],
+  interactive: ['', 'cli', 'tui', 'local'],
   maxBuffer: 1 << 20,
 }
 

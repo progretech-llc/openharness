@@ -55,6 +55,19 @@ d('HermesReader (sqlite3 CLI)', () => {
     expect(await readHermesMessages(db, "x'; DROP TABLE messages;--")).toEqual([])
   })
 
+  it('reads the current local CLI identity and its actual tool calls', async () => {
+    const local = `local-${'a7'.repeat(32)}`
+    run(db, `INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (1, '${local}', 'user', 'inspect', 1)`)
+    const calls = JSON.stringify([{ id: CALL, type: 'function', function: { name: 'terminal', arguments: '{"command":"pwd"}' } }])
+    run(db, `INSERT INTO messages (id, session_id, role, content, tool_calls, finish_reason, timestamp) VALUES (2, '${local}', 'assistant', '', ${q(calls)}, 'tool_calls', 2)`)
+    const rows = await readHermesMessages(db, local)
+    expect(rows.map(row => row.role)).toEqual(['user', 'assistant'])
+    expect(JSON.parse(rows[1].toolCalls!)[0].function.name).toBe('terminal')
+    expect(await readHermesMessages(db, `${local}0`)).toEqual([])
+    expect(await readHermesMessages(db, local.slice(0, -1))).toEqual([])
+    expect(await readHermesMessages(db, `${local}\0`)).toEqual([])
+  })
+
   it("reads an editor's (ACP) session, whose id is a uuid", async () => {
     const acp = '3f2a9c1e-8b4d-4e6f-9a1b-2c3d4e5f6a7b'
     run(db, `INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (1, '${acp}', 'user', 'hi', 1)`)

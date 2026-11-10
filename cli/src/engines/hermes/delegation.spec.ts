@@ -97,6 +97,21 @@ describe('hermes sub-agent sessions are not agents of their own', () => {
   const has = (() => { try { execFileSync('sqlite3', ['-version'], { stdio: 'ignore' }); return true } catch { return false } })()
   const t = has ? it : it.skip
 
+  t('admits current local CLI rows while retaining delegated-source isolation', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hm-local-src-'))
+    const db = join(dir, 'state.db')
+    const own = `local-${'a'.repeat(64)}`, child = `local-${'b'.repeat(64)}`
+    try {
+      execFileSync('sqlite3', [db, 'CREATE TABLE sessions (id TEXT PRIMARY KEY, source TEXT NOT NULL);'
+        + `INSERT INTO sessions VALUES ('${own}','local');`
+        + `INSERT INTO sessions VALUES ('${child}','tool');`])
+      expect(await hermesSessionSource(db, own)).toBe('local')
+      expect(await isHermesSubagentSession(db, own)).toBe(false)
+      expect(await isHermesSubagentSession(db, child)).toBe(true)
+      expect(await hermesSessionSource(db, `${own}x`)).toBe('')
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
   t('tells a delegation child (source=subagent) from the CLI session the user sees', async () => {
     // Measured: dispatching 2 sub-agents created sessions with source='subagent' whose hooks fired from
     // the PARENT's pane, so the pane re-bound to them and the parent was `forgotten` mid-turn.
