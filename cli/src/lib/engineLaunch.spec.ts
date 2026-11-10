@@ -844,6 +844,13 @@ describe('a first prompt on launch', () => {
       .toEqual([engineBin('opencode'), '--prompt', PROMPT])
   })
 
+  it('starts installed local-capable clients through their documented interactive prompt arguments', () => {
+    expect(buildEngineCommandArgv('kilo', { firstPrompt: PROMPT })).toEqual([engineBin('kilo'), '--prompt', PROMPT])
+    expect(buildEngineCommandArgv('pi', { firstPrompt: PROMPT })).toEqual([engineBin('pi'), PROMPT])
+    expect(buildEngineCommandArgv('grok', { firstPrompt: PROMPT })).toEqual([engineBin('grok'), PROMPT])
+    expect(buildEngineCommandArgv('copilot', { firstPrompt: PROMPT })).toEqual([engineBin('copilot'), '--interactive', PROMPT])
+  })
+
   it('hands claude and codex the text positionally', () => {
     expect(buildEngineCommandArgv('claude', { firstPrompt: PROMPT })).toEqual([engineBin('claude'), PROMPT])
     expect(buildEngineCommandArgv('codex', { firstPrompt: PROMPT })).toEqual([engineBin('codex'), ...CODEX_SCREEN, PROMPT])

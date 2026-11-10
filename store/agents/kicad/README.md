@@ -52,3 +52,10 @@ harness dsh check "$PWD"                           # conformance (warns: the pro
 harness dsh install "$PWD" --link                  # this checkout as the installed agent
 python3 -m unittest discover -s toolchain          # the wrapper's own tests
 ```
+
+
+## ProgreTech Ubuntu setup
+
+On this workstation, install `kicad`, `kicad-symbols` and `kicad-footprints` from Ubuntu, then run the package setup. The Linux route needs KiCad 9 or later and a Python interpreter that imports the matching `pcbnew` module. `KICADPY_CLI`, `KICADPY_PYTHON` and `KICAD_HARNESS_SHARE` may name an existing installation. Setup verifies it and creates `.runtime/kicad-bridge` for the agent. Preserve that directory with the installed package.
+
+The checked Ubuntu runtime is KiCad 9.0.8. CLI/pcbnew readiness, standard toolchain setup and a real PCB-to-SVG export passed. A board still needs its own ERC/DRC and artifact review. The macOS vendored version remains pinned separately. This ProgreTech package uses the workstation's existing native Codex `local` profile; create or select the appropriate native profile before using it elsewhere.

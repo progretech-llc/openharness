@@ -18,4 +18,4 @@ CIRCUITJS1_TARBALL=https://codeload.github.com/pfalstad/circuitjs1/tar.gz/${CIRC
 #    upstream README names that page as the hosted development version, so that is where the
 #    compiled module comes from. The permutation list is read out of nocache.js, not hardcoded,
 #    and every file that lands is checksummed into upstream/MANIFEST.
-CIRCUITJS1_BUILD=https://pfalstad.github.io/circuitjs1
+CIRCUITJS1_BUILD=https://falstad.com/circuit

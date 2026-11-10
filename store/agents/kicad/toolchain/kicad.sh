@@ -10,8 +10,8 @@
 # 1.3 GB on disk after a 1.4 GB download. A KiCad already at that version under `<install>/kicad`
 # is kept. The machine's own /Applications/KiCad is never touched or required.
 #
-# Linux has no relocatable KiCad artifact to pin (distributions and flatpak install system-wide),
-# so there this reports a miss and names the package; the doctor then says the same.
+# Linux uses a verified distro KiCad 9+ installation and its matching pcbnew module.
+# A stable package bridge gives the agent the same paths on either platform.
 #
 # Sourced by setup.sh and doctor.sh; cwd = the install dir; needs runtimes.sh loaded (for
 # `_harness_fetch`) and VERSIONS (for KICAD_*).
@@ -22,6 +22,27 @@ KICAD_CLI="$KICAD_APP/Contents/MacOS/kicad-cli"
 KICAD_PYTHON="$KICAD_APP/Contents/Frameworks/Python.framework/Versions/Current/bin/python3"
 KICAD_SHARE="$KICAD_APP/Contents/SharedSupport"
 
+# Ubuntu supplies the matching CLI, pcbnew module and libraries as distro packages.
+if [ "$(uname -s)" = Linux ]; then
+  KICAD_CLI="${KICADPY_CLI:-$(command -v kicad-cli || true)}"
+  KICAD_PYTHON="${KICADPY_PYTHON:-/usr/bin/python3}"
+  KICAD_SHARE="${KICAD_HARNESS_SHARE:-/usr/share/kicad}"
+fi
+
+harness_kicad_bridge() {
+  python3 - "$PWD/.runtime/kicad-bridge" "$KICAD_CLI" "$KICAD_PYTHON" "$KICAD_SHARE" <<'BRIDGE'
+from pathlib import Path
+import sys
+root=Path(sys.argv[1]);root.mkdir(parents=True,exist_ok=True)
+for name,value in zip(['kicad-cli','python','share'],sys.argv[2:]):
+    target=Path(value).resolve(strict=True);link=root/name
+    if link.is_symlink():
+        if link.resolve()!=target:raise SystemExit('Preserve conflicting KiCad bridge: '+str(link))
+    elif link.exists():raise SystemExit('Preserve existing KiCad bridge file: '+str(link))
+    else:link.symlink_to(target,target_is_directory=target.is_dir())
+BRIDGE
+}
+
 # The version string kicad-cli prints, e.g. "10.0.6", or nothing.
 harness_kicad_version() {
   [ -x "$KICAD_CLI" ] || return 1
@@ -30,9 +51,21 @@ harness_kicad_version() {
 
 # harness_kicad — make <install>/kicad/KiCad.app exist at the pinned version. Prints ok/miss lines.
 harness_kicad() {
-  local have url dmg mount
+  local have url dmg mount major
   have="$(harness_kicad_version || true)"
+  if [ "$(uname -s)" = Linux ]; then
+    major="${have%%.*}"
+    case "$major" in ''|*[!0-9]*) echo 'miss KiCad CLI is unavailable'; return 1;; esac
+    [ "$major" -ge 9 ] && "$KICAD_PYTHON" -c 'import pcbnew' >/dev/null 2>&1 \
+      || { echo 'miss KiCad >= 9 and its matching pcbnew Python module'; return 1; }
+    [ -d "$KICAD_SHARE/symbols" ] && [ -d "$KICAD_SHARE/footprints" ] \
+      || { echo 'miss KiCad symbol or footprint libraries'; return 1; }
+    harness_kicad_bridge || return 1
+    echo "ok   system KiCad $have (CLI, pcbnew and libraries)"
+    return 0
+  fi
   if [ "$have" = "$KICAD_VERSION" ] && "$KICAD_PYTHON" -c 'import pcbnew' >/dev/null 2>&1; then
+    harness_kicad_bridge || return 1
     echo "ok   KiCad $have vendored (kicad-cli + pcbnew)"
     return 0
   fi
@@ -68,5 +101,6 @@ harness_kicad() {
   have="$(harness_kicad_version || true)"
   if [ "$have" != "$KICAD_VERSION" ]; then echo "miss vendored kicad-cli reports '$have', expected $KICAD_VERSION"; return 1; fi
   "$KICAD_PYTHON" -c 'import pcbnew' >/dev/null 2>&1 || { echo "miss vendored KiCad Python cannot import pcbnew"; return 1; }
+  harness_kicad_bridge || return 1
   echo "ok   KiCad $have vendored (kicad-cli + pcbnew)"
 }

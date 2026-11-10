@@ -7,7 +7,7 @@
   "formerly": [
     "autonomous/solder"
   ],
-  "description": "Describe a board; get a real KiCad project — a wired schematic, DRC-checked copper, a prototype packet — with a live board view.",
+  "description": "Describe a board; get a real KiCad project \u2014 a wired schematic, DRC-checked copper, a prototype packet \u2014 with a live board view.",
   "engine": "codex",
   "workspace": {
     "template": "upstream/harness/kicad/template",
@@ -32,22 +32,16 @@
       "CMAKE_PREFIX_PATH": "${dsh}/upstream/toolchain/pico/picotool",
       "KICAD_HARNESS_CMAKE": "${dsh}/upstream/toolchain/pico/tools/bin/cmake",
       "KICAD_HARNESS_NINJA": "${dsh}/upstream/toolchain/pico/tools/bin/ninja",
-      "KICADPY_CLI": "${dsh}/kicad/KiCad.app/Contents/MacOS/kicad-cli",
-      "KICADPY_PYTHON": "${dsh}/kicad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3",
-      "CIRCUIT_KICAD_CLI": "${dsh}/kicad/KiCad.app/Contents/MacOS/kicad-cli",
-      "KICAD_HARNESS_SHARE": "${dsh}/kicad/KiCad.app/Contents/SharedSupport",
+      "KICADPY_CLI": "${dsh}/.runtime/kicad-bridge/kicad-cli",
+      "KICADPY_PYTHON": "${dsh}/.runtime/kicad-bridge/python",
+      "CIRCUIT_KICAD_CLI": "${dsh}/.runtime/kicad-bridge/kicad-cli",
+      "KICAD_HARNESS_SHARE": "${dsh}/.runtime/kicad-bridge/share",
       "CIRCUIT_SKILLS_DIR": "${workspace}/.agents/skills",
       "DISABLE_AUTOUPDATER": "1"
     },
     "args": [
-      "-m",
-      "gpt-6-astra",
-      "-c",
-      "model_reasoning_effort=high",
-      "-c",
-      "approval_policy=never",
-      "-c",
-      "sandbox_mode=danger-full-access",
+      "--profile",
+      "local",
       "-c",
       "hooks.Stop=[{hooks=[{type=\"command\",command=\"\\\"$KICAD_HARNESS_PYTHON\\\" -m kicadpy.autofinish\",timeout=1200}]}]",
       "-c",

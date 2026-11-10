@@ -19,7 +19,9 @@ venv=0
   || { echo "miss .venv (the pipeline's Python >= 3.10) — run toolchain/setup.sh"; venv=1; }
 kicad=0
 have="$(harness_kicad_version || true)"
-if [ "$have" = "$KICAD_VERSION" ]; then
+if [ "$(uname -s)" = Linux ] && [ -n "$have" ] && "$KICAD_PYTHON" -c 'import pcbnew' >/dev/null 2>&1; then
+  echo "ok   system KiCad $have with pcbnew"
+elif [ "$have" = "$KICAD_VERSION" ]; then
   echo "ok   KiCad $have vendored at kicad/KiCad.app"
 else
   echo "miss KiCad $KICAD_VERSION is not vendored (have '${have:-none}') — run toolchain/setup.sh"; kicad=1
