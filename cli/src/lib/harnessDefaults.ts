@@ -2,6 +2,9 @@ import type { AgentEngine } from '../engines/types.js'
 
 export const DEFAULT_HARNESS_ENGINE = 'opencode' as const
 export const DEFAULT_HARNESS_MODEL = 'ollama/qwen3-coder:30b'
+// Qwen's bare-function parser failures stalled factory children across two clients.
+// Keep the person's default; unselected agent-created workers use the existing local tool route.
+export const DEFAULT_WORKER_MODEL = 'ollama/gpt-oss:20b'
 export const DEFAULT_HARNESS_EFFORT = 'xhigh'
 export const DEFAULT_HARNESS_PERMISSION = 'auto'
 
@@ -33,7 +36,7 @@ function withoutPackageModel(env: Record<string, string>): Record<string, string
 
 /** Fresh own-provider launches only. Restores, explicit model routes and a package's own model keep their choices. */
 export function freshHarnessEnvironment(engine: AgentEngine, env: Record<string, string> = {},
-  explicitRoute = false, permissionMode = DEFAULT_HARNESS_PERMISSION): Record<string, string> {
+  explicitRoute = false, permissionMode = DEFAULT_HARNESS_PERMISSION, workerLaunch = false): Record<string, string> {
   if (engine !== DEFAULT_HARNESS_ENGINE) return env
   if (explicitRoute) return withoutPackageModel(env)
   const config = JSON.parse(env.OPENCODE_CONFIG_CONTENT || '{}')
@@ -43,24 +46,26 @@ export function freshHarnessEnvironment(engine: AgentEngine, env: Record<string,
   if (typeof config.model === 'string' && config.model) {
     return { ...env, OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...config, permission: opencodePermission(config, permissionMode) }) }
   }
+  const model = workerLaunch ? DEFAULT_WORKER_MODEL : DEFAULT_HARNESS_MODEL
+  const modelId = workerLaunch ? 'gpt-oss:20b' : 'qwen3-coder:30b'
   return { ...env, OPENCODE_CONFIG_CONTENT: JSON.stringify({
     ...config,
     permission: opencodePermission(config, permissionMode),
-    model: DEFAULT_HARNESS_MODEL,
-    small_model: DEFAULT_HARNESS_MODEL,
+    model,
+    small_model: model,
     provider: { ...config.provider, ollama: {
       ...config.provider?.ollama,
       npm: '@ai-sdk/openai-compatible',
       options: { ...config.provider?.ollama?.options, baseURL: 'http://127.0.0.1:11434/v1' },
       models: { ...config.provider?.ollama?.models,
-        'qwen3-coder:30b': { ...config.provider?.ollama?.models?.['qwen3-coder:30b'],
-          name: 'Workstation Qwen3 Coder 30B', tool_call: true,
+        [modelId]: { ...config.provider?.ollama?.models?.[modelId],
+          name: workerLaunch ? 'Workstation GPT OSS 20B' : 'Workstation Qwen3 Coder 30B', tool_call: true,
           limit: { context: 65536, output: 8192 } },
       },
     } },
     agent: { ...config.agent,
-      build: { ...config.agent?.build, model: DEFAULT_HARNESS_MODEL },
-      plan: { ...config.agent?.plan, model: DEFAULT_HARNESS_MODEL },
+      build: { ...config.agent?.build, model },
+      plan: { ...config.agent?.plan, model },
     },
   }) }
 }

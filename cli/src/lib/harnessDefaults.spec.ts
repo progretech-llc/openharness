@@ -30,6 +30,18 @@ it('honours an explicit Ask choice instead of enabling automatic approvals', () 
   expect(result.model).toBe(DEFAULT_HARNESS_MODEL)
 })
 
+it('uses local recovery only for unselected workers, retaining personal and explicit choices', () => {
+  const worker = JSON.parse(freshHarnessEnvironment('opencode', {}, false, 'ask', true).OPENCODE_CONFIG_CONTENT!)
+  expect(worker).toMatchObject({ model: 'ollama/gpt-oss:20b', small_model: 'ollama/gpt-oss:20b', permission: 'ask',
+    provider: { ollama: { options: { baseURL: 'http://127.0.0.1:11434/v1' }, models: { 'gpt-oss:20b': { tool_call: true, limit: { context: 65536, output: 8192 } } } } },
+    agent: { build: { model: 'ollama/gpt-oss:20b' }, plan: { model: 'ollama/gpt-oss:20b' } } })
+  expect(JSON.parse(freshHarnessEnvironment('opencode').OPENCODE_CONFIG_CONTENT!).model).toBe('ollama/qwen3-coder:30b')
+  const pinned = { OPENCODE_CONFIG_CONTENT: '{"model":"chosen/local"}' }
+  expect(JSON.parse(freshHarnessEnvironment('opencode', pinned, false, 'ask', true).OPENCODE_CONFIG_CONTENT!).model).toBe('chosen/local')
+  const grid = { OPENCODE_CONFIG: '/chosen-grid.json' }
+  expect(freshHarnessEnvironment('opencode', grid, true, 'ask', true)).toBe(grid)
+})
+
 it('does not replace an explicit route, a restored conversation, or another agent', () => {
   const env = { OPENCODE_CONFIG_CONTENT: '{"mcp":{}}', OPENCODE_CONFIG: '/grid.json' }
   expect(freshHarnessEnvironment('opencode', env, true)).toBe(env)

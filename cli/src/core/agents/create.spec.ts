@@ -449,6 +449,16 @@ describe('creating an agent', () => {
     })
   })
 
+  it('passes agent ownership to worker defaults while keeping personal launches unchanged', async () => {
+    const { create } = setup()
+    await create(request({ engine: 'opencode', startedBy: 'agent' }))
+    const worker = vi.mocked(createAndRegisterPane).mock.calls[0][0]
+    expect(JSON.parse(worker.env!.OPENCODE_CONFIG_CONTENT!).model).toBe('ollama/gpt-oss:20b')
+    await create(request({ engine: 'opencode' }))
+    const person = vi.mocked(createAndRegisterPane).mock.calls[1][0]
+    expect(JSON.parse(person.env!.OPENCODE_CONFIG_CONTENT!).model).toBe('ollama/qwen3-coder:30b')
+  })
+
   it('coalesces concurrent monitor dispatches into one pane', async () => {
     vi.mocked(installedDsh).mockReturnValue(installed() as never)
     const { create } = setup()
