@@ -652,7 +652,7 @@ function hermesInlineLauncher(row) {
     literals.push(literal.slice(1, -1))
     return `__literal${literals.length - 1}__`
   })
-  if (!/^import\s+(?:(?:os|re|sys|runpy)\s*,\s*)*(?:sys|runpy)[;\s]+(?:os\.environ\.pop\(__literal\d+__,\s*None\)[;\s]+)*sys\.path\.insert\(\s*0,\s*__literal\d+__\s*\)/.test(code)) return false
+  if (!/^import\s+(?:(?:os|re|sys|runpy)\s*,\s*)*(?:sys|runpy)[;\s]+(?:import\s+contextlib,\s*hashlib,\s*io,\s*pathlib,\s*shutil,\s*subprocess[;\s]+)?(?:os\.environ\.pop\(__literal\d+__,\s*None\)[;\s]+)*sys\.path\.insert\(\s*0,\s*__literal\d+__\s*\)/.test(code)) return false
   if (/\bimport\s+hermes_bootstrap\b/.test(code)
     && /\bfrom\s+hermes_cli\.main\s+import\s+main\b/.test(code)
     && /\bsys\.exit\(\s*main\(\)\s*\)/.test(code)) return true
@@ -875,7 +875,7 @@ async function rootEngineProcess(rootPid, engine) {
  * accepting an unknown row can replace the parent's session with a child.
  */
 async function hermesTopLevelSession(dbPath, sessionId) {
-  if (!/^[0-9]{8}_[0-9]{6}_[0-9a-fA-F]{4,16}$/.test(String(sessionId || ''))) return false
+  if (!/^(?:local-[0-9a-fA-F]{64}|[0-9]{8}_[0-9]{6}_[0-9a-fA-F]{4,16})$/.test(String(sessionId || ''))) return false
   // EVERY home on this machine, this one first. `hermes -p <name>` keeps its sessions in
   // `~/.hermes/profiles/<name>/state.db`, and the block in a profile's config.yaml may still name the
   // DEFAULT home (Hermes copies the config when it creates a profile, and older installs baked the
@@ -899,7 +899,7 @@ async function hermesTopLevelSession(dbPath, sessionId) {
         const rows = JSON.parse(raw.trim() || '[]')
         if (!Array.isArray(rows) || rows.length === 0) continue
         const source = typeof rows[0]?.source === 'string' ? rows[0].source : ''
-        return (source === '' || source === 'cli' || source === 'tui') ? db : false
+        return (source === '' || source === 'cli' || source === 'tui' || source === 'local') ? db : false
       } catch {
         return false
       }

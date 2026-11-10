@@ -60,7 +60,7 @@ interface RunHookOpts {
   cursorHome?: string
   hermesHome?: string
   /** Fake Hermes SQLite source; null means the session row has not appeared. */
-  hermesSource?: 'cli' | 'tui' | 'subagent' | null
+  hermesSource?: 'cli' | 'tui' | 'local' | 'subagent' | null
   /** How long Hermes' store takes to answer, in the shipped hook's seconds: a loaded machine. Stretched
    *  as the hook stretches its own step limits under HARNESS_HOOK_DEADLINE_MS (notify.mjs STEP_SCALE),
    *  so the delay keeps the same share of the sqlite3 limit whatever the budget. */
@@ -801,7 +801,7 @@ describe('hook notify terminal scope', () => {
     expect(() => readFileSync(join(dataDir, 'registry.json'), 'utf8')).toThrow()
   })
 
-  it.each(['cli', 'tui'] as const)('offline Hermes fallback binds source=%s and rejects delegation children or unknown rows', async (interactiveSource) => {
+  it.each(['cli', 'tui', 'local'] as const)('offline Hermes fallback binds source=%s and rejects delegation children or unknown rows', async (interactiveSource) => {
     const dir = mkdtempSync(join(tmpdir(), 'adapter-hook-hermes-source-'))
     tmpDirs.push(dir)
     const hermesHome = join(dir, 'hermes')
@@ -816,14 +816,15 @@ describe('hook notify terminal scope', () => {
       hermesHome,
     }
 
+    const ownId = interactiveSource === 'local' ? `local-${'a'.repeat(64)}` : '20260810_120000_a1b2c3'
     await runHook({
       ...common,
       dataDir: cliData,
       hermesSource: interactiveSource,
-      input: { hook_event_name: 'on_session_start', session_id: '20260810_120000_a1b2c3' },
+      input: { hook_event_name: 'on_session_start', session_id: ownId },
     })
     expect(JSON.parse(readFileSync(join(cliData, 'registry.json'), 'utf8'))).toMatchObject([{
-      sessionId: '20260810_120000_a1b2c3', engine: 'hermes', tmuxPane: '%82',
+      sessionId: ownId, engine: 'hermes', tmuxPane: '%82',
     }])
 
     for (const [name, source] of [['child', 'subagent'], ['unknown', null]] as const) {
@@ -880,6 +881,7 @@ describe('hook notify terminal scope', () => {
   it.each([
     "import sys, runpy; sys.path.insert(0, '/opt/custom'); runpy.run_module('hermes_cli.main', run_name='__main__')",
     "import os, re, sys; sys.path.insert(0, '/opt/custom'); import hermes_bootstrap; from hermes_cli.main import main; sys.exit(main())",
+    "import os, re, sys; import contextlib, hashlib, io, pathlib, shutil, subprocess; os.environ.pop('PYTHONHOME', None); os.environ.pop('PYTHONPATH', None); sys.path.insert(0, '/opt/custom'); import hermes_bootstrap; from hermes_cli.main import main; sys.exit(main())",
     "import os, sys, runpy; os.environ.pop('PYTHONHOME', None); sys.path.insert(0, '/opt/custom'); os.environ['HERMES_HOME'] = os.environ.get('HERMES_HOME') or '/home/demo/.hermes'; import hermes_bootstrap; runpy.run_module('hermes_cli.main', run_name='__main__', alter_sys=True)",
     // 0.21.5's multi-line launcher as macOS `ps` prints it: every newline as the four characters `\012`.
     ["import os, re, sys", "os.environ.pop('PYTHONHOME', None)", "sys.path.insert(0, '/opt/custom')",

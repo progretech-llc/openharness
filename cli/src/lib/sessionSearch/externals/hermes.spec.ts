@@ -168,6 +168,18 @@ describe.each(READERS)('Hermes discovery read through %s', (_name, reader) => {
     store.close()
   })
 
+  it('discovers current local CLI history without admitting delegated local rows', async () => {
+    const root = tempDir(), own = `local-${'a'.repeat(64)}`, child = `local-${'b'.repeat(64)}`
+    const store = new Store(join(root, 'state.db'))
+    store.session(own, { source: 'local', title: 'Local CLI' }).turn(own)
+    store.session(child, { source: 'local', config: { _delegate_from: own } }).turn(child)
+    const found = byId(await hermesProvider({ root }).scan(context()))
+    expect([...found.keys()]).toEqual([own])
+    expect(found.get(own)).toMatchObject({ engine: 'hermes', origin: 'terminal', cwd: '/work/app' })
+    expect((await found.get(own)!.readHistory!()).map(event => event.type)).toEqual(['user_message', 'text_delta', 'done'])
+    store.close()
+  })
+
   it('lists a branch on its own and hides a sub-agent child', async () => {
     const root = tempDir()
     const store = new Store(join(root, 'state.db'))

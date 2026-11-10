@@ -110,7 +110,7 @@ export function hermesListSql(sessions: ReadonlySet<string>, messages: ReadonlyS
   const lastMessage = messages.has('session_id') && messages.has('timestamp')
     ? '(SELECT max(m.timestamp) FROM messages m WHERE m.session_id = s.id)'
     : 'NULL'
-  const skip = "CASE WHEN s.source IS NULL OR s.source NOT IN ('cli', 'tui', 'acp') THEN 'source'"
+  const skip = "CASE WHEN s.source IS NULL OR s.source NOT IN ('cli', 'tui', 'local', 'acp') THEN 'source'"
     + (sessions.has('archived') ? " WHEN COALESCE(s.archived, 0) <> 0 THEN 'archived'" : '')
     + (config ? ` WHEN ${marker('_delegate_from')} IS NOT NULL THEN 'delegated'` : '')
     + " ELSE '' END"

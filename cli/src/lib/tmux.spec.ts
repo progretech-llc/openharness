@@ -336,6 +336,9 @@ describe('tmux process primitives', () => {
       'sys.exit(main())',
     ].join('\\012') + '\\012'
     expect(engineProcessMatchScore({ executable: '/Users/demo', args: `${python} -I -c ${source}` }, 'hermes')).toBe(2)
+    const repairBootstrap = source.replace('import os, re, sys',
+      'import os, re, sys\\012import contextlib, hashlib, io, pathlib, shutil, subprocess')
+    expect(engineProcessMatchScore({ executable: '/Users/demo', args: `${python} -I -c ${repairBootstrap}` }, 'hermes')).toBe(2)
     expect(engineProcessMatchScore({ executable: '/Users/demo', args: `${python} -I -c ${source.replace('hermes_cli.main', 'acp_adapter.entry')}` }, 'hermes')).toBe(0)
   })
 

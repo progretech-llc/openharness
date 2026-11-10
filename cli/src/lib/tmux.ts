@@ -192,7 +192,7 @@ function hermesInlineLauncher(row: Pick<ProcessRow, 'args'>): boolean {
     literals.push(literal.slice(1, -1))
     return `__literal${literals.length - 1}__`
   })
-  if (!/^import\s+(?:(?:os|re|sys|runpy)\s*,\s*)*(?:sys|runpy)[;\s]+(?:os\.environ\.pop\(__literal\d+__,\s*None\)[;\s]+)*sys\.path\.insert\(\s*0,\s*__literal\d+__\s*\)/.test(code)) return false
+  if (!/^import\s+(?:(?:os|re|sys|runpy)\s*,\s*)*(?:sys|runpy)[;\s]+(?:import\s+contextlib,\s*hashlib,\s*io,\s*pathlib,\s*shutil,\s*subprocess[;\s]+)?(?:os\.environ\.pop\(__literal\d+__,\s*None\)[;\s]+)*sys\.path\.insert\(\s*0,\s*__literal\d+__\s*\)/.test(code)) return false
   if (/\bimport\s+hermes_bootstrap\b/.test(code)
     && /\bfrom\s+hermes_cli\.main\s+import\s+main\b/.test(code)
     && /\bsys\.exit\(\s*main\(\)\s*\)/.test(code)) return true
