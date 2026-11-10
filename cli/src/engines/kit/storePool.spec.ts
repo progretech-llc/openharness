@@ -63,7 +63,7 @@ vi.mock('node:fs', async original => {
 vi.mock('../../lib/sqliteRead.js', async original => {
   const sqlite = await original<typeof import('../../lib/sqliteRead.js')>()
   return { ...sqlite, sqliteReadAll: async (...args: Parameters<typeof sqlite.sqliteReadAll>) => {
-    if (args[1].includes('sqlite_schema') || args[1].includes('pragma_table_xinfo')) return sqlite.sqliteReadAll(...args)
+    if (args[1].includes('sqlite_schema') || args[1].includes('pragma_table_xinfo') || args[1].includes('pragma_index_')) return sqlite.sqliteReadAll(...args)
     control.queries.push({ path: args[0], options: args[3] ?? {} })
     const answer = control.result ?? await sqlite.sqliteReadAll(...args)
     await control.afterQuery?.(args[0])
@@ -327,7 +327,7 @@ it.each(['main', 'wal', 'journal', 'aggregate'])('bounds %s database bytes befor
     if (target !== path) writeFileSync(target, '')
     truncateSync(target, 65 * 1024 * 1024)
   }
-  await expect(find()).rejects.toThrow('64 MiB read limit')
+  await expect(read()).rejects.toThrow('64 MiB read limit')
   expect(control.queries).toEqual([])
 })
 
@@ -340,7 +340,23 @@ it('reads indexed identity from a large history store without scanning its paylo
   })
   expect(rows.map(value => value.row)).toEqual([{ id, source: 'cli' }])
   expect(control.queries).toHaveLength(1)
-  await expect(find()).rejects.toThrow('64 MiB read limit')
+  await expect(read()).rejects.toThrow('64 MiB read limit')
+})
+
+it('discovers a recent Hermes conversation in large history through its verified native time index', async () => {
+  const path = store(home)
+  update(path, 'CREATE INDEX idx_sessions_started ON sessions(started_at DESC)')
+  truncateSync(path, 70 * 1024 * 1024)
+  expect(await find()).toEqual({ sessionId: id, hermesHome: home })
+})
+
+it.each(['missing', 'wrong', 'partial'] as const)('holds large history when its required time index is %s', async kind => {
+  const path = store(home)
+  if (kind === 'wrong') update(path, 'CREATE INDEX idx_sessions_started ON sessions(cwd)')
+  if (kind === 'partial') update(path, "CREATE INDEX idx_sessions_started ON sessions(started_at) WHERE source='cli'")
+  truncateSync(path, 70 * 1024 * 1024)
+  await expect(find()).rejects.toThrow(/range index/)
+  expect(control.queries).toEqual([])
 })
 
 it('retains the journal cap for an indexed identity lookup', async () => {

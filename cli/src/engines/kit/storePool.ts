@@ -42,7 +42,8 @@ export async function readStorePool(
   declared: StoreHomes,
   defaultHome: string,
   query: { sql: string; params: SqliteParam[]; maxRows: number; maxBuffer: number;
-    columns: readonly string[]; pointKey?: string; knownHome?: string },
+    columns: readonly string[]; pointKey?: string; knownHome?: string;
+    largeStore?: { sql: string; params: SqliteParam[]; index: string; column: string } },
 ): Promise<StorePoolRow[]> {
   const deadline = performance.now() + 2_000
   const remaining = (): number => {
@@ -105,7 +106,7 @@ export async function readStorePool(
     // Indexed identity queries do not load the complete history database. Their ordinary-table
     // and leading-primary-key checks below are mandatory. Discovery and journal work stay capped.
     journalBytes += (wal?.size ?? 0) + (journal?.size ?? 0)
-    if ((!query.pointKey && bytes > MAX_POOL_BYTES) || journalBytes > MAX_POOL_BYTES) {
+    if ((!query.pointKey && !query.largeStore && bytes > MAX_POOL_BYTES) || journalBytes > MAX_POOL_BYTES) {
       unavailable('the native store pool exceeds the 64 MiB read limit')
     }
     const store = { home, aliases: [home], path, files: evidence.slice(start) }
@@ -136,7 +137,25 @@ export async function readStorePool(
       || (query.pointKey && !columns.some(column => column.name === query.pointKey && column.pk === 1))) {
       unavailable('the native session table has unsupported control columns')
     }
-    const result = { rows: await read(query.sql, query.params, query.maxBuffer) }
+    let selectedSql = query.sql
+    let selectedParams = query.params
+    if (bytes > MAX_POOL_BYTES && query.largeStore) {
+      const range = query.largeStore
+      // The alternate query is a trusted engine declaration with INDEXED BY and a bounded range.
+      // Verify the real index before running it; no optional reader or unindexed scan grants identity.
+      const indexes = await read('SELECT name, partial FROM pragma_index_list(?) LIMIT 257', ['sessions'], 32_768)
+      if (indexes.length > 256 || !indexes.some(index => index.name === range.index && index.partial === 0)) {
+        unavailable('the native session range index is unavailable')
+      }
+      const keys = await read('SELECT seqno, cid, name, key FROM pragma_index_xinfo(?) LIMIT 257', [range.index], 32_768)
+      if (keys.length > 256 || !keys.some(key => key.seqno === 0 && key.name === range.column && key.key === 1 && typeof key.cid === 'number' && key.cid >= 0)
+        || !columns.some(column => column.name === range.column && column.hidden === 0)) {
+        unavailable('the native session range index has unsupported control columns')
+      }
+      selectedSql = range.sql
+      selectedParams = range.params
+    }
+    const result = { rows: await read(selectedSql, selectedParams, query.maxBuffer) }
     if (result.rows.length > query.maxRows) unavailable('a native store query exceeded its row limit')
     if (found.length + result.rows.length > MAX_POOL_ROWS) unavailable('the native store pool exceeded its row limit')
     for (const row of result.rows) found.push({ home: store.home, aliases: store.aliases, row })

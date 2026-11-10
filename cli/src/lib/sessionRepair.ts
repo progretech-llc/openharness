@@ -460,6 +460,12 @@ export async function findLiveSession(
           + ' FROM sessions LIMIT 8193;',
         params: [], maxRows: 8192, maxBuffer: 40 * 1024 * 1024,
         columns: ['id', 'source', 'cwd', 'started_at'], knownHome: opts?.hermesHome,
+        largeStore: {
+          sql: `SELECT ${HERMES_ID_SQL} AS id, ${HERMES_SOURCE_SQL} AS source, started_at, typeof(cwd) AS cwd_type,`
+            + " CASE WHEN typeof(cwd) = 'text' AND length(CAST(cwd AS BLOB)) <= 4096 AND instr(CAST(cwd AS BLOB), x'00') = 0 THEN cwd END AS cwd"
+            + ' FROM sessions INDEXED BY idx_sessions_started WHERE started_at >= ? LIMIT 8193;',
+          params: [Math.trunc(sinceMs / 1000)], index: 'idx_sessions_started', column: 'started_at',
+        },
       })
       const candidates: RepairedSession[] = []
       for (const { home, aliases, row } of found) {
