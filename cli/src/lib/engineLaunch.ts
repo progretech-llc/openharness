@@ -365,6 +365,12 @@ export function supportsNativeFork(engine: AgentEngine): boolean {
 /** The executable argv, before the interactive-shell wrapper is applied. */
 export function buildEngineCommandArgv(engine: AgentEngine, opts: LaunchCommandOptions = {}): string[] {
   const argv = [opts.native?.executable?.command ?? engineBin(engine)]
+  // OpenCode 2's shared service ignores pane-local model/tool configuration (factory incident 307).
+  // A private native server reads that environment; an explicit remote server keeps its own route.
+  if (engine === 'opencode' && isOpencodeV2(opts.native?.opencodeMajor)
+      && !opts.extraArgs?.some(arg => arg === '--standalone' || arg === '--server' || arg.startsWith('--server='))) {
+    argv.push('--standalone')
+  }
   // A fork is a resume that leaves the source alone; the two are exclusive, and the fork wins.
   const fork = opts.forkSessionId ? LAUNCH_FORK_FLAG[engine] : undefined
   const resumeFlag = fork ? fork.lead : opts.resumeSessionId ? LAUNCH_RESUME_FLAG[engine] : undefined

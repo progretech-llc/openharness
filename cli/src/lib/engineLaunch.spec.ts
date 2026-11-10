@@ -92,6 +92,24 @@ const BROWSER = browserPrelude()
  *  `engineFallbackPrelude`. `null` tmux: the suite must not depend on what this machine has. */
 const FALLBACK = (engine: AgentEngine, shell: string) => engineFallbackPrelude(engine, shell, null)
 const NO_TMUX = null
+
+describe('OpenCode native configuration scope', () => {
+  const native = (major: number) => ({ opencodeMajor: major, executable: { command: '/fixture/opencode' } }) as never
+  it('gives v2 a private native server before submitting its first task', () => {
+    expect(buildEngineCommandArgv('opencode', { native: native(2), firstPrompt: 'bounded task' }))
+      .toEqual(['/fixture/opencode', '--standalone', '--prompt', 'bounded task'])
+  })
+  it('preserves explicit servers and avoids duplicate standalone flags', () => {
+    for (const extraArgs of [['--server', 'http://127.0.0.1:1234'], ['--server=http://127.0.0.1:1234'], ['--standalone']]) {
+      expect(buildEngineCommandArgv('opencode', { native: native(2), extraArgs }))
+        .toEqual(['/fixture/opencode', ...extraArgs])
+    }
+  })
+  it('leaves v1 and unverified native versions unchanged', () => {
+    expect(buildEngineCommandArgv('opencode', { native: native(1) })).toEqual(['/fixture/opencode'])
+    expect(buildEngineCommandArgv('opencode')).toEqual([engineBin('opencode')])
+  })
+})
 /** The screen Harness runs Codex on (facets/launch.ts `ScreenContract`), ahead of the launch's extra arguments. */
 const CODEX_SCREEN = ['-c', 'tui.fullscreen_transcript=false']
 /** How a plain launch ends: job control on, the binary its command names run at the script's top
